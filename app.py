@@ -307,6 +307,20 @@ def _clear_derived(session_dir):
         st.session_state.stage_status[name] = "waiting"
 
 
+def _run_exists(session_dir):
+    """True when this session already holds a run worth discarding:
+    any draft on disk, or a loop in progress. A packet alone does not
+    count — rebuilding over a packet that was never drafted loses
+    nothing the rebuild does not recreate."""
+    if st.session_state.get("loop_step"):
+        return True
+    for name in ("draft_v1.md", "draft_v2.md", "draft_v3.md",
+                 "draft_final.md"):
+        if os.path.exists(os.path.join(session_dir, name)):
+            return True
+    return False
+
+
 
 def _secret(name):
     """A Streamlit Secret, or None when it is not set."""
@@ -1321,7 +1335,33 @@ def main():
             st.session_state.confirm_reset = True
             st.rerun()
 
-    if st.button("Build the packet"):
+    # Rebuild guard (Nov 13, 2026): building again discards the
+    # current run's drafts and pause answers — silently, before this
+    # guard, and a stray second press paid for a whole rebuild.
+    # When a run exists, the first press only arms a confirm and no
+    # model call is made; the rebuild happens on the explicit Yes.
+    # Mirrors the clear/reset two-step confirms above.
+    if st.session_state.get("confirm_rebuild"):
+        st.write("A build already exists in this session. Building "
+                 "again discards its drafts and any pause answers "
+                 "and starts over. Your sources stay — only the "
+                 "run's work is discarded.")
+        _byes, _bno = st.columns(2)
+        with _byes:
+            if st.button("Yes, rebuild and start over"):
+                st.session_state.rebuild_go = True
+                st.session_state.pop("confirm_rebuild", None)
+                st.rerun()
+        with _bno:
+            if st.button("Cancel rebuild"):
+                st.session_state.pop("confirm_rebuild", None)
+                st.rerun()
+    _build_pressed = st.button("Build the packet")
+    _build_go = st.session_state.pop("rebuild_go", False)
+    if _build_pressed or _build_go:
+        if _build_pressed and not _build_go and _run_exists(_session_dir):
+            st.session_state.confirm_rebuild = True
+            st.rerun()
         if not description.strip():
             st.error("Describe the document first — one or two sentences is enough.")
             st.stop()
@@ -1580,7 +1620,28 @@ def main():
             or st.session_state.get("ps-scope-out", ex.get("scope_out", "")) != ex.get("scope_out", "")
             or st.session_state.get("ps-user", ex.get("intended_user", "")) != ex.get("intended_user", "")
         )
-        if changed and st.button("Save my fixes and rebuild the packet"):
+        _sess2 = os.path.join(SESSIONS, st.session_state.session_id)
+        if st.session_state.get("confirm_save_rebuild"):
+            st.write("Saving rebuilds the packet and discards the "
+                     "current run's drafts and any pause answers. "
+                     "Your sources and the corrected purpose and "
+                     "scope are kept.")
+            _syes, _sno = st.columns(2)
+            with _syes:
+                if st.button("Yes, save and rebuild"):
+                    st.session_state.save_rebuild_go = True
+                    st.session_state.pop("confirm_save_rebuild", None)
+                    st.rerun()
+            with _sno:
+                if st.button("Cancel save"):
+                    st.session_state.pop("confirm_save_rebuild", None)
+                    st.rerun()
+        _save_pressed = changed and st.button("Save my fixes and rebuild the packet")
+        _save_go = st.session_state.pop("save_rebuild_go", False)
+        if _save_pressed or _save_go:
+            if _save_pressed and not _save_go and _run_exists(_sess2):
+                st.session_state.confirm_save_rebuild = True
+                st.rerun()
             ps = dict(st.session_state.get("purpose_scope", {}))
             ps["purpose"] = st.session_state.get("ps-purpose", "")
             ps["scope_in"] = st.session_state.get("ps-scope-in", "")
