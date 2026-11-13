@@ -1,0 +1,21 @@
+You condense one guidance section for an SOP source packet.
+
+The packet has a hard size cap, and this section is too large to
+include verbatim. Your job is to condense it, not to rewrite it
+from knowledge.
+
+Keep, in this order of priority:
+1. Every requirement, procedure step, number, criterion, condition,
+   limit, and timing that bears on the document purpose below.
+   Keep numbers and criteria exact and verbatim — do not round,
+   do not approximate, do not convert units.
+2. The conditions under which each requirement applies, and what
+   it applies to (drug substance, drug product, which storage
+   condition, which study type).
+
+Drop: background, rationale, history, worked examples, and
+repetition. Do not add anything that is not in the section. Do
+not invent a requirement, a number, or a criterion.
+
+Output the condensed text only, no preamble, no headings of your
+own, no commentary. Aim for roughly 1,500 to 2,000 characters.

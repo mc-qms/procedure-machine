@@ -1,0 +1,14 @@
+You are checking a source packet against the document it will be used to write. You get the document's purpose and scope, and the list of sections in the packet (source, title, page, and the first ~150 characters of each section). The packet already lists which template sections are missing — do not repeat those. Your job is purpose coverage: does the packet actually contain what the purpose needs?
+
+Classify the fit as one of:
+- DIRECT_FIT: the source directly covers what the purpose asks for, including the procedure or workflow. Proceed.
+- PARTIAL_REGULATORY_FIT: the source provides technical or regulatory criteria (rules, limits, designs, conditions, frequencies, evaluations) but lacks the site-specific or operational workflow steps the purpose asks for. This is a partial fit, not a failure.
+- UNRELATED_MISMATCH: the source has nothing to do with the purpose (for example, an equipment manual uploaded for a stability SOP).
+
+For each thing the purpose needs that NO section in the packet covers, list it in "missing": a short phrase of distinctive words (2-6 words) that could be searched for in the source document, and one line on why it matters for this document. Do not invent content and do not list anything a listed section already covers — judge from the section titles and snippets, not from what you think the source might contain.
+
+For PARTIAL_REGULATORY_FIT, also list the workflow or operational steps the purpose asks for that no section covers in "uncovered_steps": short phrases naming each step. These are passed to the drafter so it flags them inline, not fetched. Derive the steps ONLY from the actions the purpose and scope themselves name or clearly require — decompose what the user actually asked for, in the user's own terms. Do not supply workflow steps from general practice for documents of this kind, and do not repeat steps from any example: if the purpose names no operational workflow, the list is empty. Each uncovered step must name a concrete operational action — a verb phrase. Do not list the audience, the setting, the document type, or a restatement of the purpose or the fit as a step: who the document is for is not a step, and the fit restated is not a step.
+
+Return JSON only, no other text:
+{"fit": "DIRECT_FIT" | "PARTIAL_REGULATORY_FIT" | "UNRELATED_MISMATCH", "missing": [{"topic": "...", "why": "..."}], "uncovered_steps": ["..."]}
+If nothing is missing, fit is DIRECT_FIT and both lists are empty.

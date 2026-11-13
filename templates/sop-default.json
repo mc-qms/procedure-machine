@@ -1,0 +1,30 @@
+{
+  "document_type": "SOP",
+  "required_sections": [
+    {
+      "id": "1",
+      "title": "Purpose"
+    },
+    {
+      "id": "2",
+      "title": "Scope"
+    },
+    {
+      "id": "3",
+      "title": "Responsibilities"
+    },
+    {
+      "id": "4",
+      "title": "Procedure"
+    },
+    {
+      "id": "5",
+      "title": "Records"
+    },
+    {
+      "id": "6",
+      "title": "References"
+    }
+  ],
+  "template_id": "sop-default"
+}
