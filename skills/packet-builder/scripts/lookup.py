@@ -89,41 +89,46 @@ def lookup_step(model, mode, session_dir, purpose, step, i):
     result = {"step": step, "found": "", "sources": [],
               "assessment": "error",
               "assessment_note": "Lookup failed — no information obtained."}
-    try:
-        r = subprocess.run(
-            [sys.executable, MODEL_CALL, "--mode", mode,
-             "--model", model, "--system-file", sys_file,
-             "--user-file", user_file, "--out", out_file],
-            capture_output=True, text=True, timeout=300)
-        if r.returncode != 0:
-            result["assessment_note"] = (
-                "Lookup failed — the model call did not return.")
-            return result
-        with open(out_file, encoding="utf-8") as f:
-            data = json.load(f)
-        parsed = json.loads(strip_fence(
-            data["choices"][0]["message"]["content"]))
-        found = parsed.get("found", "")
-        if not isinstance(found, str):
-            found = ""
-        result["found"] = found.strip()[:600]
-        sources = parsed.get("sources", [])
-        if isinstance(sources, list):
-            result["sources"] = [str(s)[:200] for s in sources if s]
-        assessment = parsed.get("assessment", "")
-        if assessment in ("covers", "framework_only", "not_found"):
-            result["assessment"] = assessment
-        else:
-            result["assessment"] = "error"
-            result["assessment_note"] = (
-                "Lookup returned information but the assessment was unclear.")
-            return result
-        note = parsed.get("assessment_note", "")
-        result["assessment_note"] = (str(note).strip()[:200]
-                                     if isinstance(note, str) and note.strip()
-                                     else "")
-    except (OSError, json.JSONDecodeError, KeyError, IndexError):
-        pass
+    # One retry (Nov 13, 2026): a single transient failure used to
+    # print "lookup failed" for a step the guidance plainly covers.
+    # Two attempts, then the error entry stands.
+    for _attempt in range(2):
+        try:
+            r = subprocess.run(
+                [sys.executable, MODEL_CALL, "--mode", mode,
+                 "--model", model, "--system-file", sys_file,
+                 "--user-file", user_file, "--out", out_file],
+                capture_output=True, text=True, timeout=300)
+            if r.returncode != 0:
+                result["assessment_note"] = (
+                    "Lookup failed — the model call did not return.")
+                continue
+            with open(out_file, encoding="utf-8") as f:
+                data = json.load(f)
+            parsed = json.loads(strip_fence(
+                data["choices"][0]["message"]["content"]))
+            found = parsed.get("found", "")
+            if not isinstance(found, str):
+                found = ""
+            result["found"] = found.strip()[:600]
+            sources = parsed.get("sources", [])
+            if isinstance(sources, list):
+                result["sources"] = [str(s)[:200] for s in sources if s]
+            assessment = parsed.get("assessment", "")
+            if assessment in ("covers", "framework_only", "not_found"):
+                result["assessment"] = assessment
+            else:
+                result["assessment"] = "error"
+                result["assessment_note"] = (
+                    "Lookup returned information but the assessment was unclear.")
+                continue
+            note = parsed.get("assessment_note", "")
+            result["assessment_note"] = (str(note).strip()[:200]
+                                         if isinstance(note, str) and note.strip()
+                                         else "")
+            break
+        except (OSError, json.JSONDecodeError, KeyError, IndexError):
+            continue
     return result
 
 
