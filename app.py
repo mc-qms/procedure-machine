@@ -1116,6 +1116,7 @@ def stage_box(number, label, role, desc, status, detail=""):
 
 
 def main():
+    st.set_page_config(page_title="The Procedure Machine", page_icon="⚙️")
     st.title("The Procedure Machine")
     # No public version caption (removed Nov 12, 2026): the app is
     # pre-release, more like 0.15 than 15, and a "Version N" label
