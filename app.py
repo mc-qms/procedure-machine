@@ -18,9 +18,7 @@ Pipeline, in order:
 Human gates are buttons in the pipeline view. The run pauses at
 each gate; it does not auto-advance past them. Flagged gaps are
 OK at demo conclusion: the final draft is a Discussion Draft,
-markers included, downloadable as it stands. When the draft has
-flagged gaps, section 3 gives the human a field per gap to answer
-them; applying the answers runs one more drafting pass.
+markers included, downloadable as it stands.
 
 Run locally: streamlit run app.py
 Deploy: Streamlit Community Cloud, public repo, key in Settings
@@ -415,7 +413,7 @@ def _split_draft(reply):
     return reply, ""
 
 
-_EXTRACT_SYSTEM = """Extract the purpose, scope, and audience of a document from the user's plain-words description, and say what kind of document it is. Return JSON only, exactly these keys: purpose, scope_in, scope_out, intended_user, document_type, template, template_reason, template_description. document_type is "SOP" or "Test Method". template is one of "sop-default", "equipment-sop", "test-method-default", or "custom": sop-default for a plain process SOP; equipment-sop when the description is about operating, maintaining, or troubleshooting a piece of equipment or an instrument; test-method-default when it is a bench-level analytical test method; custom only when none of those fit, and then template_description says in plain words what sections the template needs. document_type must agree with the template: test-method-default is a Test Method, the other three are SOPs. template_reason is one short sentence saying why that template fits. scope_out may be an empty string when the description does not state anything out of scope. Do not invent details that are not in the description; if the intended user is not stated, use an empty string. Write purpose and scope in the document's own voice, as they will appear in the finished document: the user wrote a request, not document text, so rephrase their wording into document language rather than copying it. Never carry over references to the source material or to the request itself — no chapter or page ranges, no mention of a manual or of what the description asks for. scope_in states what the document governs — the activities, the equipment, and the setting — in those terms only. When the description names source structure (for example that it covers certain chapters of a manual), translate that into the activity it describes, which belongs in scope_in; the structural reference itself does not. purpose and scope_in must not be the same statement in different words: purpose says why the document exists, while scope_in delimits where it applies — the activities covered, the equipment covered, and the setting. When the description bounds the document to part of a larger subject (for example the operation of an instrument as distinct from its installation or servicing, or one range of a manual's chapters), state the covered part in scope_in and name the excluded remainder of that same subject in scope_out in document terms, rather than leaving scope_out empty. The excluded remainder belongs only in scope_out: do not widen purpose or scope_in with activities the description does not name — for example, do not add maintenance or troubleshooting to a document the description scopes to operation alone."""
+_EXTRACT_SYSTEM = """Extract the purpose, scope, and audience of a document from the user's plain-words description, and say what kind of document it is. Return JSON only, exactly these keys: purpose, scope_in, scope_out, scope_note, intended_user, document_type, template, template_reason, template_description. document_type is "SOP" or "Test Method". template is one of "sop-default", "equipment-sop", "test-method-default", or "custom": sop-default for a plain process SOP; equipment-sop when the description is about operating, maintaining, or troubleshooting a piece of equipment or an instrument; test-method-default when it is a bench-level analytical test method; custom only when none of those fit, and then template_description says in plain words what sections the template needs. document_type must agree with the template: test-method-default is a Test Method, the other three are SOPs. template_reason is one short sentence saying why that template fits. scope_out may be an empty string when the description does not state anything out of scope. Do not invent details that are not in the description; if the intended user is not stated, use an empty string. Write purpose and scope in the document's own voice, as they will appear in the finished document: the user wrote a request, not document text, so rephrase their wording into document language rather than copying it. Never carry over references to the source material or to the request itself — no chapter or page ranges, no mention of a manual or of what the description asks for. scope_in states what the document governs — the activities, the equipment, and the setting — in those terms only. When the description names source structure (for example that it covers certain chapters of a manual), translate that into the activity it describes, which belongs in scope_in; the structural reference itself does not. purpose and scope_in must not be the same statement in different words: purpose says why the document exists, while scope_in delimits where it applies — the activities covered, the equipment covered, and the setting. When the description bounds the document to part of a larger subject (for example the operation of an instrument as distinct from its installation or servicing, or one range of a manual's chapters), state the covered part in scope_in and name the excluded remainder of that same subject in scope_out in document terms, rather than leaving scope_out empty. The excluded remainder belongs only in scope_out: do not widen purpose or scope_in with activities the description does not name — for example, do not add maintenance or troubleshooting to a document the description scopes to operation alone. scope_note is normally an empty string. Set it only when the description pulls in two directions: it names one main activity and also bounds the document to part of a source (a chapter range or named parts). Then write one plain sentence to the user saying the scope above follows the named activity, and that if the named part of the source covers more than that activity — setup, administration, or maintenance, for example — they can widen the scope here before drafting. The note speaks to the user about their description; it is not document text and is not written in document voice."""
 
 
 _TEMPLATES = ("sop-default", "equipment-sop", "test-method-default")
@@ -455,14 +453,14 @@ def _extract_purpose_scope(session_dir, description):
     ok, content, _usage = _model_call(session_dir, "extract", _EXTRACT_SYSTEM,
                                       f"DESCRIPTION:\n{description}", model)
     blank = {"purpose": description.strip(), "scope_in": "", "scope_out": "",
-             "intended_user": "", "document_type": "SOP", "template": "sop-default",
+             "scope_note": "", "intended_user": "", "document_type": "SOP", "template": "sop-default",
              "template_reason": "", "template_description": ""}
     if not ok:
         return blank, False
     try:
         data = json.loads(_strip_fence(content))
         fields = {k: (data.get(k) or "") for k in
-                  ("purpose", "scope_in", "scope_out", "intended_user",
+                  ("purpose", "scope_in", "scope_out", "scope_note", "intended_user",
                    "template_reason", "template_description")}
         fields["document_type"] = data.get("document_type") or "SOP"
         if fields["document_type"] not in ("SOP", "Test Method"):
@@ -759,8 +757,8 @@ def _pause_questions(session_dir, current):
     the drafting correction that follows a cold read, so a marker
     here is one drafting could not resolve — that is what "really
     needed" means. A marker shown at an earlier pause is not
-    asked again; it stays flagged and shows up in section 3 at
-    the end if it is still there. Compared by question text
+    asked again; it stays flagged in the final draft if it is
+    still there. Compared by question text
     (body), not by full marker: the same question with a
     different kind prefix is the same question."""
     shown_bodies = {_marker_body(s) for s in st.session_state.get("pause_shown", [])}
@@ -961,6 +959,10 @@ def _run_loop_chunk(session_dir):
     while True:
         step = st.session_state.get("loop_step", "idle")
         if step == "start":
+            # The user pressed Proceed: the packet gate is passed,
+            # so the intake stage reads done from here on (it used
+            # to keep showing needs-you for the whole loop).
+            st.session_state.stage_status["packet-builder"] = "done"
             # drafting 1 -> draft v1, written by the drafting
             # model (v29, test-049). One retry on failure — model
             # failures are often transient. There is NO skeleton
@@ -1601,7 +1603,7 @@ def main():
         st.success("Packet built. Check how the machine read your description below, fix anything it got wrong, then press “Proceed to drafting?” just below — that is the human gate.")
         _pkt = json.load(open(os.path.join(session_dir, "source_packet.json")))
         if not _pkt.get("relevant_sections"):
-            st.warning("Your sources had nothing the packet could use — the draft will be all flagged gaps for you to answer in section 3. Add a richer source document (a manual, a guidance PDF) for a fuller draft.")
+            st.warning("Your sources had nothing the packet could use — the draft will be all flagged gaps. Add a richer source document (a manual, a guidance PDF) for a fuller draft.")
         st.rerun()
     if "extracted" in st.session_state:
         ex = st.session_state.extracted
@@ -1612,6 +1614,8 @@ def main():
         st.text_input("What is in scope?", ex.get("scope_in", ""), key="ps-scope-in")
         st.text_input("What is outside the scope? (optional)", ex.get("scope_out", ""), key="ps-scope-out")
         st.text_input(f"Who is this {doc_label} for?", ex.get("intended_user", ""), key="ps-user")
+        if ex.get("scope_note"):
+            st.info(ex["scope_note"])
         if st.session_state.get("save_result"):
             st.success(st.session_state.pop("save_result"))
         # The save button only exists when the user changed something.
@@ -1657,7 +1661,8 @@ def main():
                 json.dump(ps, f, indent=2)
             st.session_state.purpose_scope = ps
             st.session_state.extracted = {"purpose": ps["purpose"], "scope_in": ps["scope_in"],
-                                          "scope_out": ps["scope_out"], "intended_user": ps["intended_user"]}
+                                          "scope_out": ps["scope_out"], "intended_user": ps["intended_user"],
+                                          "scope_note": ps.get("scope_note", "")}
             # The packet is about to be replaced: clear the previous
             # run's derived state and loop state first (finding 6),
             # so drafts and pauses from the old packet cannot be
@@ -1864,16 +1869,17 @@ def main():
         _round_no = 1 if st.session_state.loop_step == "pause1" else 2
         _stage_name = "human-input-1" if _round_no == 1 else "human-input-2"
         st.header(f"Paused after cold read {_round_no}")
-        st.write("The drafting agent could not resolve these — only a human can answer them. "
-                 "Answer what you know and leave the rest blank; a blank answer stays flagged. "
+        st.write("The drafting agent could not resolve these — only a human can. "
+                 "Provide the information, or if a question does not seem applicable, "
+                 "state why. Leave the rest blank; a blank answer stays flagged. "
                  "“I don't know” is a valid answer.")
         if st.session_state.get("pause_result"):
             st.success(st.session_state.pop("pause_result"))
         _answers = {}
-        for _marker in st.session_state.get("pause_questions", []):
+        for _n, _marker in enumerate(st.session_state.get("pause_questions", []), start=1):
             _short = _marker if len(_marker) <= 140 else _marker[:137] + "…"
             _key = "pause-answer-" + hashlib.md5((_marker + f"|{_round_no}").encode("utf-8")).hexdigest()
-            _answers[_marker] = st.text_area(_short, key=_key, height=68)
+            _answers[_marker] = st.text_area(f"{_n}. {_short}", key=_key, height=68)
         _advance = False
         _given = {}
         # The drafting step after this pause (drafting-4 after
@@ -1885,9 +1891,10 @@ def main():
             _given = {m: a.strip() for m, a in _answers.items() if a.strip()}
             if _given:
                 st.session_state.stage_status[_after_key] = "running"
-                _ok, _remaining, _err = _apply_pause_answers(
-                    os.path.join(SESSIONS, st.session_state.session_id),
-                    st.session_state.get("loop_current", "draft_v2.md"), _given)
+                with st.spinner("Applying your answers…"):
+                    _ok, _remaining, _err = _apply_pause_answers(
+                        os.path.join(SESSIONS, st.session_state.session_id),
+                        st.session_state.get("loop_current", "draft_v2.md"), _given)
                 if not _ok:
                     st.session_state.stage_status[_after_key] = "failed"
                     st.error(f"Could not apply the answers: {_err}")
@@ -1974,121 +1981,39 @@ def main():
             detail = st.session_state.get("loop_detail", {}).get(_key, "")
         stage_box(_num, _label, _role, _desc, st.session_state.stage_status[_key], detail)
 
-    # --- Human input: answer the flagged gaps
-    final_path = os.path.join(session_dir, "draft_final.md")
-    if os.path.exists(final_path):
-        final_text = _draft_text(session_dir, "draft_final.md")
-        markers = _find_markers(final_text)
-        if markers:
-            st.header("3. Answer the flagged gaps")
-            st.write("The draft has flagged gaps — things only a human can answer. "
-                     "Answer what you know and leave the rest blank; a blank answer "
-                     "stays flagged. “I don't know” is a valid answer.")
-            if st.session_state.get("gap_result"):
-                st.success(st.session_state.pop("gap_result"))
-            answers = {}
-            for marker in markers:
-                short = marker if len(marker) <= 140 else marker[:137] + "…"
-                # Key by the marker itself, never by position. Positional
-                # keys (gap-answer-0, -1, …) made answered values stick
-                # to the wrong boxes after the list shrank: on the
-                # rerun, the remaining boxes inherited the old values
-                # by key (found live Nov 11, 2026 — the Responsibilities
-                # answer showed under Records). A marker's key dies
-                # with the marker; the remaining boxes keep their own.
-                key = "gap-answer-" + hashlib.md5(marker.encode("utf-8")).hexdigest()
-                answers[marker] = st.text_area(short, key=key, height=68)
-            if st.button("Apply my answers"):
-                given = {m: a.strip() for m, a in answers.items() if a.strip()}
-                if not given:
-                    st.warning("No answers given — the markers stay as they are.")
-                    st.stop()
-                packet_md = _packet_text(session_dir)
-                model = _secret("MODEL_DRAFTING") or "openai/gpt-6-luna"
-                drafting_prompt = _secret("DRAFTING_SYSTEM_PROMPT")
-                if not drafting_prompt:
-                    st.error("DRAFTING_SYSTEM_PROMPT is not in Streamlit Secrets.")
-                    st.stop()
-                _od = _prompt_outdated("DRAFTING_SYSTEM_PROMPT", drafting_prompt)
-                if _od:
-                    st.error(_od)
-                    st.stop()
-                author_text = "\n".join(f"- {m}\n  Answer: {a}" for m, a in given.items())
-                ok, new_draft = _revise(session_dir, packet_md, model, drafting_prompt,
-                                        "draft_final.md",
-                                        "AUTHOR INPUT — answers supplied by the human for the flagged gaps. "
-                                        "These are author decisions, not source-packet facts. Use them to replace "
-                                        "the gap markers they answer. Do not invent anything beyond what is written here.\n\n" + author_text,
-                                        "final")
-                if not ok:
-                    st.error(f"Could not apply the answers: {new_draft}")
-                    st.stop()
-                with open(final_path, "w") as f:
-                    f.write(new_draft)
-                with open(os.path.join(session_dir, "draft_final.txt"), "w") as f:
-                    f.write(new_draft)
-                _summary, _err = _docsrc_check_summary(session_dir, "draft_final.txt")
-                remaining = len(_find_markers(new_draft))
-                # The success message must survive the rerun below, or
-                # it never shows: st.rerun() wipes anything rendered
-                # on this run. Keep it in session state and show it
-                # once at the top of this section (found live Nov 11,
-                # 2026 — no confirmation appeared after Apply).
-                if remaining == 0:
-                    st.session_state.gap_result = ("All flagged gaps answered — the draft is now a clean copy "
-                                                   "(0 markers). Download it below.")
-                else:
-                    st.session_state.gap_result = (f"Answers applied. {remaining} gap(s) still flagged — "
-                                                   "answer them above, or press “Download as it stands” below.")
-                if _summary:
-                    st.session_state.gap_result += " " + _summary
-                st.rerun()
-            if st.button("Download as it stands"):
-                # The downloads in section 4 stay locked while gaps
-                # remain, so taking the draft is an explicit choice,
-                # not the default. (Nov 12, 2026: downloads present
-                # before the human input made the run look finished,
-                # and let people take the draft before the loop was
-                # done.)
-                st.session_state.download_unlocked = True
-                st.rerun()
-
     # --- Download
-    st.header("4. Download")
+    st.header("3. Download")
     st.write("The final draft, as it stands, including any flagged gap "
              "markers. Labelled Discussion Draft.")
     _final = os.path.join(session_dir, "draft_final.md")
-    _locked = False
     if os.path.exists(_final):
         _n = len(_find_markers(_draft_text(session_dir, "draft_final.md")))
-        if _n and not st.session_state.get("download_unlocked"):
-            # Locked while gaps remain: the buttons made the run
-            # look finished before the human had answered. The
-            # human unlocks them from section 3, or by answering
-            # every gap (0 markers opens them on its own).
-            _locked = True
+        if _n:
+            # Warn, never lock (Manuel, Nov 13, 2026): the lock hid
+            # every version at the end of a run that had been free
+            # to download all along, and the extra answering round
+            # after cold read 2 is gone — the final draft is it.
             st.warning(f"The final draft still has {_n} flagged gap(s) — it is a list of questions as much as a draft. "
-                       "Answer them in section 3 above, or press “Download as it stands” there to take it as it is.")
-    if not _locked:
-        for fname in ("draft_final.md", "draft_v3.md", "draft_v2.md", "draft_v1.md", "source_packet.md"):
-            path = os.path.join(session_dir, fname)
-            if os.path.exists(path):
-                with open(path, "rb") as f:
-                    st.download_button(f"Download {fname}", f.read(), file_name=fname)
-                if fname.startswith("draft_"):
-                    # RTF version of the same draft, for Word: same
-                    # content, including the Discussion Draft status and
-                    # any flagged gap markers. Generated on demand from
-                    # the .md, so it never goes stale.
-                    rtf_name = fname.replace(".md", ".rtf")
-                    rtf_path = os.path.join(session_dir, rtf_name)
-                    if (not os.path.exists(rtf_path)
-                            or os.path.getmtime(rtf_path) < os.path.getmtime(path)):
-                        run(["python3", os.path.join(BASE, "agents/drafting-agent/scripts/md_to_rtf.py"),
-                             path, rtf_path])
-                    if os.path.exists(rtf_path):
-                        with open(rtf_path, "rb") as f:
-                            st.download_button(f"Download {rtf_name} (Word)", f.read(), file_name=rtf_name)
+                       "It is labelled Discussion Draft, gaps visible, nothing invented.")
+    for fname in ("draft_final.md", "draft_v3.md", "draft_v2.md", "draft_v1.md", "source_packet.md"):
+        path = os.path.join(session_dir, fname)
+        if os.path.exists(path):
+            with open(path, "rb") as f:
+                st.download_button(f"Download {fname}", f.read(), file_name=fname)
+            if fname.startswith("draft_"):
+                # RTF version of the same draft, for Word: same
+                # content, including the Discussion Draft status and
+                # any flagged gap markers. Generated on demand from
+                # the .md, so it never goes stale.
+                rtf_name = fname.replace(".md", ".rtf")
+                rtf_path = os.path.join(session_dir, rtf_name)
+                if (not os.path.exists(rtf_path)
+                        or os.path.getmtime(rtf_path) < os.path.getmtime(path)):
+                    run(["python3", os.path.join(BASE, "agents/drafting-agent/scripts/md_to_rtf.py"),
+                         path, rtf_path])
+                if os.path.exists(rtf_path):
+                    with open(rtf_path, "rb") as f:
+                        st.download_button(f"Download {rtf_name} (Word)", f.read(), file_name=rtf_name)
     if not os.path.exists(session_dir):
         st.caption("No draft yet in this session. Run the pipeline first.")
 
