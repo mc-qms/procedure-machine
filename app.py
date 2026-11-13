@@ -1,6 +1,6 @@
-"""The Procedure Machine — Streamlit demo, v1.
+"""The Procedure Machine — Streamlit app.
 
-Public demo, SOPs and Test Methods. The pipeline view shows which agent is
+Public build, SOPs and Test Methods. The pipeline view shows which agent is
 on, what step it is on, and what it took in and produced. It does
 NOT show model thoughts, live drafting text, or raw instructions.
 Polished instructions live in Streamlit Secrets, not in this repo.
@@ -17,7 +17,7 @@ Pipeline, in order:
 
 Human gates are buttons in the pipeline view. The run pauses at
 each gate; it does not auto-advance past them. Flagged gaps are
-OK at demo conclusion: the final draft is a Discussion Draft,
+OK at run conclusion: the final draft is a Discussion Draft,
 markers included, downloadable as it stands.
 
 Run locally: streamlit run app.py
@@ -1166,8 +1166,9 @@ def main():
     # overstates it. The live check is the Pipeline view instead —
     # the stages it shows are the deployed build's fingerprint
     # (v15: the two Human input stages).
-    st.write("A public multi-agent demo: intake, drafting, HFE review, "
-             "and cold-read audit — SOPs and Test Methods. Python owns what must be "
+    st.write("A multi-agent system for drafting governed procedures — live, "
+             "public, and still being built. Intake, drafting, HFE review, "
+             "and cold-read audit for SOPs and Test Methods. Python owns what must be "
              "true; the LLM owns what should feel human.")
     secret_names = ["OPENROUTER_API_KEY", "MODEL_HFE", "MODEL_DRAFTING", "MODEL_COLD_READ",
                     "MODEL_COMPACTION", "MODEL_LOOKUP", "MODEL_PACKET_CHECK", "MODEL_EXTRACTION",
@@ -1196,17 +1197,15 @@ def main():
     # out of it by the extraction call at Build time. Both pickers
     # default to Auto and are only there to override a wrong pick.
     st.header("1. Purpose and scope")
-    st.write("Start by describing what you want, in plain words — what it should do, what it covers, what it does not cover, and who it is for. The machine reads the kind of document and the template out of that, and shows you what it picked below. Change the pickers only if it picks wrong.")
+    st.write("Start by describing what you want, in plain words — what it should do, what it covers, what it does not cover, and who it is for. The machine reads the kind of document and the template out of that, and shows you what it picked below. Change the template only if it picks wrong.")
     description = st.text_area(
         "Describe what you want",
         "An SOP for cleaning the commercial espresso machine at closing time, so the first shot tomorrow tastes right. It covers the countertop machine and grinder at the café. It does not cover plumbing, descaling, or the dishwasher. It is for the staff member closing the shop.",
         height=120)
-    doc_type = st.radio("Document type", ["Auto (from your description)", "SOP", "Test Method"], index=0,
-                        help="Auto is the default: the machine reads the kind out of your description. Pick SOP or Test Method only to override it. Demo scope is SOPs and Test Methods. Other types are flagged, not built.")
-    doc_label = "SOP" if doc_type != "Test Method" else "test method"
     template_id = st.selectbox("Template", ["Auto (from your description)", "sop-default", "equipment-sop", "test-method-default", "custom — describe it"],
                                index=0,
-                               help="Auto is the default: the machine reads your description and picks the template — plain SOP, equipment SOP, or Test Method. Pick one yourself only to override it. custom: describe the template in plain words and the machine builds it.")
+                               help="Auto is the default: the machine reads your description and picks the template — plain SOP, equipment SOP, or Test Method. The template also sets the kind of document: test-method-default is a Test Method, the others are SOPs. Pick one yourself only to override it. custom: describe the template in plain words and the machine builds it.")
+    doc_label = "test method" if template_id == "test-method-default" else "SOP"
     if template_id == "custom — describe it":
         st.write("Describe the template in plain words. Only what you describe gets added — a required section with no packet content becomes a question to you, so keep it to what you actually need.")
         desc = st.text_input("Template description", f"a {doc_label} with subsections under Procedure for setup, daily use, and shutdown")
@@ -1423,10 +1422,10 @@ def main():
                         template_resolved = "sop-default"
                 else:
                     template_resolved = "sop-default"
-        doc_type_resolved = (extracted.get("document_type") if doc_type == "Auto (from your description)"
-                             else doc_type)
-        if doc_type_resolved not in ("SOP", "Test Method"):
-            doc_type_resolved = "SOP"
+        # The kind of document follows the template (the radio that
+        # used to set it separately is gone, Nov 13, 2026 — two
+        # controls for one fact, and they could disagree).
+        doc_type_resolved = "Test Method" if template_resolved == "test-method-default" else "SOP"
         purpose_scope = {"document_type": doc_type_resolved, "purpose": extracted["purpose"],
                          "scope_in": extracted["scope_in"], "scope_out": extracted["scope_out"],
                          "intended_user": extracted["intended_user"],
@@ -1607,6 +1606,8 @@ def main():
         st.rerun()
     if "extracted" in st.session_state:
         ex = st.session_state.extracted
+        _dt = (st.session_state.get("purpose_scope") or {}).get("document_type") or ex.get("document_type") or "SOP"
+        doc_label = "test method" if _dt == "Test Method" else "SOP"
         if st.session_state.get("template_pick"):
             st.info(st.session_state["template_pick"])
         st.write("Here's how the machine read your description. If anything is wrong, fix it — a save button appears when you change a field, and saving rebuilds the packet from the corrected values. If it's all right, you're done here; the packet is already built and drafting is ready.")
