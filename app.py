@@ -1380,7 +1380,8 @@ def main():
                    "pause_questions", "loop_detail", "loop_result",
                    "pause_result"):
             st.session_state.pop(_k, None)
-        extracted, read_ok = _extract_purpose_scope(session_dir, description)
+        with st.spinner("Reading your description…"):
+            extracted, read_ok = _extract_purpose_scope(session_dir, description)
         # The description drives the kind: when the pickers are on
         # Auto, the extraction call says what document this is and
         # which template fits. An explicit user choice wins; a
@@ -1511,9 +1512,10 @@ def main():
             st.stop()
         st.session_state.stage_status["source-intake"] = "done"
         st.session_state.stage_status["packet-builder"] = "running"
-        code, out = run(["python3", "skills/packet-builder/scripts/packet.py",
-                         "build", "--session", st.session_state.session_id,
-                         "--template", template_resolved])
+        with st.spinner("Building the packet from your sources…"):
+            code, out = run(["python3", "skills/packet-builder/scripts/packet.py",
+                             "build", "--session", st.session_state.session_id,
+                             "--template", template_resolved])
         if code != 0:
             # Over cap is recoverable: packet.py wrote the packet
             # flagged over_cap, and the relevance step trims it
@@ -1536,11 +1538,12 @@ def main():
                 st.error("The packet is over the size cap and there is no OpenRouter key in Secrets, so the relevance step that would trim it cannot run. Narrow the scope or drop a source.")
                 st.stop()
             st.info("The packet is over the size cap, so the machine is trimming it to the sections that matter for this document. This takes a few model calls.")
-            code, out = run(["python3", "skills/packet-builder/scripts/relevance.py",
-                             "--session", st.session_state.session_id,
-                             "--mode", "env",
-                             "--model", _secret("MODEL_DRAFTING") or "openai/gpt-6-luna"],
-                            env={"OPENROUTER_API_KEY": key}, timeout=1200)
+            with st.spinner("Trimming the packet — scoring each section against your description. On a large manual this is the slow step…"):
+                code, out = run(["python3", "skills/packet-builder/scripts/relevance.py",
+                                 "--session", st.session_state.session_id,
+                                 "--mode", "env",
+                                 "--model", _secret("MODEL_DRAFTING") or "openai/gpt-6-luna"],
+                                env={"OPENROUTER_API_KEY": key}, timeout=1200)
             if code != 0:
                 # A failed relevance pass stops the build (finding
                 # 3): relevance is the judgment that decides what
@@ -1560,11 +1563,12 @@ def main():
                 # can still be over cap because the kept sections
                 # themselves are huge. Compaction condenses those.
                 st.info("Still over the size cap after relevance — condensing the largest sections now.")
-                code, out = run(["python3", "skills/packet-builder/scripts/compact.py",
-                                 "--session", st.session_state.session_id,
-                                 "--mode", "env",
-                                 "--model", _secret("MODEL_COMPACTION") or "openai/gpt-6-luna"],
-                                env={"OPENROUTER_API_KEY": key}, timeout=1200)
+                with st.spinner("Condensing the largest sections…"):
+                    code, out = run(["python3", "skills/packet-builder/scripts/compact.py",
+                                     "--session", st.session_state.session_id,
+                                     "--mode", "env",
+                                     "--model", _secret("MODEL_COMPACTION") or "openai/gpt-6-luna"],
+                                    env={"OPENROUTER_API_KEY": key}, timeout=1200)
                 if code != 0:
                     # A compaction crash is a crash, not "still over
                     # cap" (finding 3).
@@ -1590,8 +1594,9 @@ def main():
         # right after it: it obtains what the relevant guidance says
         # about each uncovered step and assesses whether that covers
         # the gap.
-        st.session_state.packet_check = _run_packet_check(session_dir)
-        st.session_state.lookup = _run_lookup(session_dir)
+        with st.spinner("Checking the packet against your description…"):
+            st.session_state.packet_check = _run_packet_check(session_dir)
+            st.session_state.lookup = _run_lookup(session_dir)
         st.session_state.stage_status["packet-builder"] = "needs-you"
         st.success("Packet built. Check how the machine read your description below, fix anything it got wrong, then press “Proceed to drafting?” just below — that is the human gate.")
         _pkt = json.load(open(os.path.join(session_dir, "source_packet.json")))
@@ -1687,11 +1692,12 @@ def main():
                     if not _key:
                         _trim_err = "the packet is over the size cap and there is no key to trim it with"
                     else:
-                        _tc, _to = run(["python3", "skills/packet-builder/scripts/relevance.py",
-                                        "--session", st.session_state.session_id,
-                                        "--mode", "env",
-                                        "--model", _secret("MODEL_DRAFTING") or "openai/gpt-6-luna"],
-                                       env={"OPENROUTER_API_KEY": _key}, timeout=1200)
+                        with st.spinner("Trimming the packet — scoring each section against your description. On a large manual this is the slow step…"):
+                            _tc, _to = run(["python3", "skills/packet-builder/scripts/relevance.py",
+                                            "--session", st.session_state.session_id,
+                                            "--mode", "env",
+                                            "--model", _secret("MODEL_DRAFTING") or "openai/gpt-6-luna"],
+                                           env={"OPENROUTER_API_KEY": _key}, timeout=1200)
                         if _tc != 0:
                             _trim_err = f"relevance trimming failed: {_to.strip()[:200]}"
                         else:
@@ -1700,11 +1706,12 @@ def main():
                             except (OSError, json.JSONDecodeError):
                                 _rpkt = {}
                             if _rpkt.get("over_cap"):
-                                _tc, _to = run(["python3", "skills/packet-builder/scripts/compact.py",
-                                                "--session", st.session_state.session_id,
-                                                "--mode", "env",
-                                                "--model", _secret("MODEL_COMPACTION") or "openai/gpt-6-luna"],
-                                               env={"OPENROUTER_API_KEY": _key}, timeout=1200)
+                                with st.spinner("Condensing the largest sections…"):
+                                    _tc, _to = run(["python3", "skills/packet-builder/scripts/compact.py",
+                                                    "--session", st.session_state.session_id,
+                                                    "--mode", "env",
+                                                    "--model", _secret("MODEL_COMPACTION") or "openai/gpt-6-luna"],
+                                                   env={"OPENROUTER_API_KEY": _key}, timeout=1200)
                                 if _tc != 0:
                                     _trim_err = f"compaction failed: {_to.strip()[:200]}"
                                 else:
@@ -1722,8 +1729,9 @@ def main():
                     # The packet changed, so the check re-runs too,
                     # and the lookup with it (the uncovered steps
                     # may have changed).
-                    st.session_state.packet_check = _run_packet_check(session_dir)
-                    st.session_state.lookup = _run_lookup(session_dir)
+                    with st.spinner("Checking the packet against your description…"):
+                        st.session_state.packet_check = _run_packet_check(session_dir)
+                        st.session_state.lookup = _run_lookup(session_dir)
                     st.session_state.save_result = "Saved, and the packet rebuilt from the corrected values."
             st.rerun()
     # The drafting button lives here in section 1, right where the
