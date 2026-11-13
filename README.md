@@ -13,8 +13,6 @@ Give it a purpose, a scope, and your source documents — guidance, instrument m
 5. **Human factors** — a structured review of whether a qualified user can actually follow the draft in order. Findings go back to drafting.
 6. **Cold-read audit** — a fresh audit of the draft and packet only, no drafting history, no HFE reasoning. Findings are ordered by load-bearing weight, not severity, with no grade and no score. A deterministic filter drops findings that only restate a gap already flagged in the draft.
 7. **Human in the loop** — gaps that need an author answer pause for the human. "I don't know" is a valid answer; that item stays a flagged gap and the run continues. A run may end as a Discussion Draft with markers visible. A formal clean copy needs zero markers.
-8. **Final checks** — `docsrc.py check` verifies numbering, cross-references, and unresolved markers, and the results are shown with the finished run.
-
 The loop is: drafting, HFE, drafting, cold read, drafting, cold read, final draft. A run takes minutes and costs cents — the Python does the bulk of the work for free, and each model call is one narrow judgment on a small prompt.
 
 ## The design principle
@@ -46,34 +44,24 @@ export OPENROUTER_API_KEY=your_key_here
 streamlit run app.py
 ```
 
-The pipeline also runs headlessly from the scripts — that is how it was built and tested. Each script has `--help`; see the test logs in `tests/` for the exact commands and what they produced.
+The pipeline also runs headlessly from the scripts — that is how it was built and tested. Each script has `--help`.
 
 ## Project layout
 
 ```
 app.py                  Streamlit front end (pipeline view, human gates, download)
-ORCHESTRATOR.md         design record: how the design maps to code, skills, models
 requirements.txt        streamlit + pypdf
 .streamlit/
   secrets.toml.example  template for Streamlit Secrets (key + prompts, no real values)
 agents/
-  intake-agent/         thin instruction: purpose-scope → fetch → intake → packet
-  drafting-agent/       thin instruction + draft.py (deterministic draft v1)
-  human-factors-agent/  thin instruction (bridge skill; no standalone HFE skill exists)
-  audit-agent/          thin instruction + dedup.py (deterministic finding filter)
+  audit-agent/          dedup.py — deterministic filter for cold-read findings
+  drafting-agent/       draft.py + md_to_rtf.py (Word downloads)
   model_call.py         one shared model call (env mode for Streamlit, vault mode for local tests)
 skills/
-  purpose-scope/        ask + confirm type, purpose, scope, template, authority route
   fetch-link/           fetch a public link (Python only, no LLM)
-  source-intake/        docsrc.py 2.1 — read + check documents (Python only)
-  packet-builder/       build the condensed packet + model relevance calls
-  human-factors/        bridge skill: 8 followability checks, load-bearing order
-  procedure-audit/      bridge skill: cold read, load-bearing order, no grade/score
-  audit-output/         delivery gate (docsrc check, draft-maturity rules)
-  redline-revision/     anchored revision against an approved baseline
-templates/              sop-default, equipment-sop, sop-lab, test-method-default + "describe it" builder (pickers default to Auto — the machine reads the template out of your description)
-tests/                  test logs 001–014: method, results, bugs, costs
-source-intake/SKILL.md  superseded v0.3 monolith, reference only
+  source-intake/        docsrc.py 2.1 — read documents (Python only)
+  packet-builder/       build the condensed packet; relevance, compaction, fit check, and lookup calls
+templates/              sop-default, equipment-sop, sop-lab, test-method-default + "describe it" builder (the picker defaults to Auto — the machine reads the template out of your description)
 ```
 
 ## What is not in this repo
@@ -84,7 +72,7 @@ source-intake/SKILL.md  superseded v0.3 monolith, reference only
 
 ## Test history
 
-`tests/` holds the full log, test by test: intake, drafting, HFE and cold read as model calls, the Flash downgrade (about 17× cheaper than Pro for the same findings), the dedup filter, the full loop, templates and test methods back in scope, custom templates from a plain-language description, the app wiring, a real guidance document (ICH Q2(R2)), Q2 rebuilt as an SOP, and the human-in-the-loop run that produced the first clean copy — zero markers, numbering clean, cross-references resolving.
+The build was tested run by run: intake, drafting, HFE and cold read as model calls, the Flash downgrade (about 17× cheaper than Pro for the same findings), the dedup filter, the full loop, templates and test methods back in scope, custom templates from a plain-language description, the app wiring, a real guidance document (ICH Q2(R2)), Q2 rebuilt as an SOP, and the human-in-the-loop run that produced the first clean copy — zero markers, numbering clean, cross-references resolving.
 
 ## License
 

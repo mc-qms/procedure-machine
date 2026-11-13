@@ -13,7 +13,7 @@ Pipeline, in order:
   -> drafting -> HFE -> drafting fixes
   -> cold read -> dedup.py -> drafting fixes -> human-input pause
   -> cold read again -> dedup.py -> drafting fixes -> human-input pause
-  -> audit-output check -> download
+  -> download
 
 Human gates are buttons in the pipeline view. The run pauses at
 each gate; it does not auto-advance past them. Flagged gaps are
@@ -173,7 +173,6 @@ STAGES = [
     ("drafting-5", "drafting", "Drafting", "Revise the draft from the second cold-read findings."),
     ("human-input-2", "human-input-2", "Human input", "Pause after cold read 2: questions the drafting agent could not resolve. Only when there is something to ask."),
     ("drafting-6", "drafting", "Drafting", "Final drafting: revise the draft from your answers."),
-    ("audit-output", "audit-output", "Audit", "Final check: numbering, cross-references, and any gap markers left in the draft."),
 ]
 
 # ---------------------------------------------------------------- helpers
@@ -899,39 +898,6 @@ def _run_lookup(session_dir):
         return None
 
 
-def _docsrc_check_summary(session_dir, txt_name):
-    """Run docsrc `check` on a draft and compress its output to a
-    one-line summary (finding 2: the check used to be computed at
-    three call sites and discarded by all of them, so the
-    audit-output stage showed done regardless of what it found).
-    Returns (summary, error): summary is None when the check
-    itself crashed — findings never make it fail; the check
-    reports facts and the human judges them. Non-blocking by
-    design, consistent with the delivery-gate philosophy: the
-    numbers are shown, not enforced."""
-    code, out = run(["python3", os.path.join(BASE, "skills/source-intake/scripts/docsrc.py"),
-                     "check", os.path.join(session_dir, txt_name)],
-                    cwd=session_dir)
-    if code != 0:
-        return None, f"Delivery check failed: {out.strip()[:300]}"
-
-    def _bullets(header):
-        m = re.search(re.escape(header) + r"[^\n]*\n((?:- .*\n?)*)", out)
-        return [ln[2:].strip() for ln in (m.group(1).splitlines() if m else []) if ln.strip()]
-
-    numbering = _bullets("Numbering sequence:")
-    xrefs = _bullets("Internal cross-references:")
-    mm = re.search(r"Unresolved markers: (\d+)", out)
-    ph = re.search(r"Placeholders \(TBD/XX/insert\): (\d+)", out)
-    parts = [
-        "numbering: " + ("; ".join(numbering) if numbering else "no gaps"),
-        "cross-references: " + (f"{len(xrefs)} unresolved" if xrefs else "all resolve"),
-        f"gap markers left: {mm.group(1) if mm else '?'}",
-        f"placeholders left: {ph.group(1) if ph else '?'}",
-    ]
-    return "Delivery check — " + "; ".join(parts) + ".", None
-
-
 def _run_loop_chunk(session_dir):
     """Advance the drafting loop until a pause is needed or it finishes.
 
@@ -1133,16 +1099,6 @@ def _run_loop_chunk(session_dir):
                             os.path.join(session_dir, "draft_final.md"))
                 shutil.copy(os.path.join(session_dir, current.replace(".md", ".txt")),
                             os.path.join(session_dir, "draft_final.txt"))
-            # audit-output: deterministic delivery checks (docsrc
-            # check). The results are surfaced in the stage detail
-            # (finding 2) — facts for the human, non-blocking.
-            st.session_state.stage_status["audit-output"] = "running"
-            _summary, _err = _docsrc_check_summary(session_dir, "draft_final.txt")
-            if _err:
-                st.session_state.stage_status["audit-output"] = "failed"
-                return _err
-            st.session_state.stage_status["audit-output"] = "done"
-            st.session_state.setdefault("loop_detail", {})["audit-output"] = _summary
             st.session_state.stage_status["packet-builder"] = "done"
             st.session_state.loop_step = "done"
             return ""
@@ -1978,7 +1934,7 @@ def main():
                            ", ".join(d.get("name", "?") for d in _dups) + ".")
         if _key in ("human-input-1", "human-input-2", "drafting-1", "drafting-2",
                     "drafting-3", "drafting-4", "drafting-5", "drafting-6",
-                    "cold-read-1", "cold-read-2", "audit-output"):
+                    "cold-read-1", "cold-read-2"):
             detail = st.session_state.get("loop_detail", {}).get(_key, "")
         stage_box(_num, _label, _role, _desc, st.session_state.stage_status[_key], detail)
 
