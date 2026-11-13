@@ -1,6 +1,6 @@
 # The Procedure Machine
 
-Multi-agent procedure orchestration, from guidance to polished SOP.
+Multi-agent procedure orchestration, from guidance to a solid first draft of an SOP or test method.
 
 Give it a purpose, a scope, and your source documents — guidance, instrument manuals, reference procedures — and it drafts an SOP or a test method through a full loop: drafting, human-factors review, drafting, cold-read audit, drafting, cold read, final draft. Python owns what must be true; the LLM owns what should feel human.
 
