@@ -1875,7 +1875,7 @@ def main():
                 _cache = json.load(open(os.path.join(session_dir, "docsrc_cache.json")))
                 detail = " | ".join(
                     f"{n}: {r.get('status', '?')}, {r.get('pages', '?')} pages, "
-                    f"{r.get('chars', '?')} chars, {len(r.get('anchors', []))} sections"
+                    f"{r.get('chars', '?')} source chars, {len(r.get('anchors', []))} sections"
                     for n, r in _cache.get("files", {}).items()
                     if isinstance(r, dict))
             except (OSError, json.JSONDecodeError):
