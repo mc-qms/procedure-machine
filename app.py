@@ -29,6 +29,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import uuid
@@ -168,19 +169,61 @@ STAGES = [
     ("purpose-scope", "purpose-scope", "Intake", "Describe the document in plain words; the machine reads out purpose, scope, and audience."),
     ("fetch-link", "fetch-link", "Intake", "Fetch the public links you gave."),
     ("source-intake", "source-intake", "Intake", "Read the source documents into text the machine can work with."),
-    ("packet-builder", "packet-builder", "Intake", "Pick the parts of the sources that matter for this document, and condense them into a packet."),
-    ("drafting-1", "drafting", "Drafting", "Write the first draft from the packet."),
-    ("human-factors", "human-factors", "HFE", "Check whether a qualified user can actually follow the draft in order."),
+    ("packet-builder", "packet-builder", "Intake", "Pick the parts of the sources that matter for this document, and condense them into a packet. Everything later drafts from this packet only."),
+    ("drafting-1", "drafting", "Drafting", "Write the first draft (v1) from the packet alone — nothing outside it."),
+    ("human-factors", "human-factors", "HFE", "Check whether a qualified user can actually follow the draft in order. Produces findings for the next pass; it does not edit."),
     ("drafting-2", "drafting", "Drafting", "Revise the draft from the HFE findings."),
-    ("cold-read-1", "cold-read", "Audit", "Read the draft cold, as a qualified user who has never seen it, and list what could go wrong — most load-bearing first."),
+    ("cold-read-1", "cold-read", "Audit", "Read the draft cold, as a qualified user who has never seen it, and list what could go wrong — most load-bearing first. Produces findings, not edits, and no score."),
     ("drafting-3", "drafting", "Drafting", "Revise the draft from the cold-read findings."),
     ("human-input-1", "human-input-1", "Human input", "Pause after cold read 1: questions the drafting agent could not resolve. Only when there is something to ask."),
     ("drafting-4", "drafting", "Drafting", "Revise the draft from your answers."),
-    ("cold-read-2", "cold-read", "Audit", "Read the draft cold again, including your answers, and list what could go wrong — most load-bearing first."),
+    ("cold-read-2", "cold-read", "Audit", "Read the draft cold again, including your answers, and list what could go wrong — most load-bearing first. Produces findings, not edits, and no score."),
     ("drafting-5", "drafting", "Drafting", "Revise the draft from the second cold-read findings."),
     ("human-input-2", "human-input-2", "Human input", "Pause after cold read 2: questions the drafting agent could not resolve. Only when there is something to ask."),
-    ("drafting-6", "drafting", "Drafting", "Final drafting: revise the draft from your answers."),
+    ("drafting-6", "drafting", "Drafting", "Final drafting: revise the draft from your answers. Its output is the final draft."),
 ]
+
+# Built-in examples (Nov 14, 2026): a visitor without a document
+# of their own could not see the machine do anything, so an
+# example pre-fills the description and loads its source into the
+# session, ready to build. Each entry is self-contained: name,
+# the file under examples/, the description it fills in, and the
+# source credit shown with a view-the-source button. Only bundle
+# a file whose redistribution is clean (a US federal method is
+# public domain); an example whose source may not be bundled
+# would load by link instead — same picker, same shape.
+EXAMPLES = [
+    {
+        "name": "pH test method — from US EPA Method 150.1",
+        "file": "epa-method-150-1.txt",
+        "description": "I'd like a test method for measuring the pH of water samples with a pH meter, based on EPA Method 150.1.",
+        "source_line": "Source: US EPA Method 150.1, “pH (Electrometric)” — a US federal method, public domain, shown as its extracted text: the same text the machine reads.",
+    },
+]
+
+
+def _on_example_change():
+    """Picker callback: load or unload the chosen example.
+
+    Runs before the page rerenders, so the description it sets is
+    what the description box shows, and the source file it copies
+    into the session folder is listed as a stored source and joins
+    the next build like an upload. Switching back to "Write my
+    own" removes the example's file again, so it cannot silently
+    join a later, unrelated build.
+    """
+    session_dir = os.path.join(SESSIONS, st.session_state.session_id)
+    for ex in EXAMPLES:
+        path = os.path.join(session_dir, ex["file"])
+        if os.path.exists(path):
+            os.remove(path)
+    chosen = next((e for e in EXAMPLES
+                   if e["name"] == st.session_state.get("example_sel")), None)
+    if chosen:
+        os.makedirs(session_dir, exist_ok=True)
+        shutil.copy(os.path.join(BASE, "examples", chosen["file"]),
+                    os.path.join(session_dir, chosen["file"]))
+        st.session_state["description_text"] = chosen["description"]
 
 # ---------------------------------------------------------------- helpers
 def run(cmd, cwd=BASE, env=None, timeout=300):
@@ -1153,6 +1196,11 @@ def main():
         st.session_state.stage_status.setdefault(_key, "waiting")
     if "session_id" not in st.session_state:
         st.session_state.session_id = "demo-" + uuid.uuid4().hex[:8]
+    if "description_text" not in st.session_state:
+        st.session_state.description_text = (
+            "An SOP for cleaning the commercial espresso machine at closing time, so the first shot tomorrow tastes right. "
+            "It covers the countertop machine and grinder at the café. It does not cover plumbing, descaling, or the dishwasher. "
+            "It is for the staff member closing the shop.")
 
     # --- Step 0: purpose + scope, with confirm gate
     # Intake starts with "describe what you want." The description
@@ -1161,10 +1209,24 @@ def main():
     # default to Auto and are only there to override a wrong pick.
     st.header("1. Purpose and scope")
     st.write("Start by describing what you want, in plain words — what it should do, what it covers, what it does not cover, and who it is for. The machine reads the kind of document and the template out of that, and shows you what it picked below. Change the template only if it picks wrong.")
+    # Example picker (Nov 14, 2026): fills the description and
+    # loads the example's source, so a first-time visitor can run
+    # the whole loop without bringing a document.
+    st.selectbox("Start from an example (optional)",
+                 ["Write my own"] + [e["name"] for e in EXAMPLES],
+                 key="example_sel", on_change=_on_example_change,
+                 help="An example fills in the description and loads its source document for you. Pick “Write my own” to start blank.")
+    _chosen_example = next((e for e in EXAMPLES
+                            if e["name"] == st.session_state.get("example_sel")), None)
+    if _chosen_example:
+        st.caption(_chosen_example["source_line"])
+        with open(os.path.join(BASE, "examples", _chosen_example["file"]), encoding="utf-8") as _ef:
+            st.download_button("View the source", _ef.read(),
+                               file_name=_chosen_example["file"],
+                               mime="text/plain")
     description = st.text_area(
         "Describe what you want",
-        "An SOP for cleaning the commercial espresso machine at closing time, so the first shot tomorrow tastes right. It covers the countertop machine and grinder at the café. It does not cover plumbing, descaling, or the dishwasher. It is for the staff member closing the shop.",
-        height=120)
+        height=120, key="description_text")
     template_id = st.selectbox("Template", ["Auto (from your description)", "sop-default", "equipment-sop", "test-method-default", "custom — describe it"],
                                index=0,
                                help="Auto is the default: the machine reads your description and picks the template — plain SOP, equipment SOP, or Test Method. The template also sets the kind of document: test-method-default is a Test Method, the others are SOPs. Pick one yourself only to override it. custom: describe the template in plain words and the machine builds it.")
@@ -1837,6 +1899,10 @@ def main():
                  "Provide the information, or if a question does not seem applicable, "
                  "state why. Leave the rest blank; a blank answer stays flagged. "
                  "“I don't know” is a valid answer.")
+        if st.session_state.get("example_sel") not in (None, "Write my own"):
+            st.info("Running the example? This stop is the point — the machine halts "
+                    "rather than invent an answer. Leave everything blank if you like; "
+                    "the run continues and the unanswered questions stay flagged in the draft.")
         if st.session_state.get("pause_result"):
             st.success(st.session_state.pop("pause_result"))
         _answers = {}

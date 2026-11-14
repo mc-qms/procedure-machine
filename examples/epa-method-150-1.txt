@@ -1,0 +1,134 @@
+EPA Method 150.1 — pH (Electrometric)
+From: Methods for Chemical Analysis of Water and Wastes (US EPA).
+A US federal method — public domain. This file is the method's text,
+extracted from the published PDF; it is the same text the machine reads.
+
+--- page 1 ---
+METHOD #: 150.1 Approved for NPDES (Editorial Revision 1978, 1982)
+TITLE: pH (Electrometric)
+ANALYTE:p H
+INSTRUMENTATION: pH Meter
+STORET No. Determined on site 00400
+Laboratory 00403
+1.0 Scope and Application
+1.1 This method is applicable to drinking, surface, and saline waters, domestic and
+industrial wastes and acid rain (atmospheric deposition). 
+2.0 Summary of Method
+2.1 The pH of a sample is determined electrometrically using either a glass
+electrode in combination with a reference potential or a combination electrode.
+3.0 Sample Handling and Preservation
+3.1 Samples should be analyzed as soon as possible preferably in the field at the
+time of sampling.
+3.2 High-purity waters and waters not at equilibrium with the atmosphere are
+subject to changes when exposed to the atmosphere, therefore the sample
+containers should be filled completely and kept sealed prior to analysis.
+4.0 Interferences
+4.1 The glass electrode, in general, is not subject to solution interferences from
+color, turbidity, colloidal matter, oxidants, reductants or high salinity.
+4.2 Sodium error at pH levels greater than 10 can be reduced or eliminated by
+using a "low sodium error" electrode.
+4.3 Coatings of oily material or particulate matter can impair electrode response.
+These coatings can usually be removed by gentle wiping or detergent washing,
+followed by distilled water rinsing. An additional treatment with hydrochloric
+acid (1 + 9) may be necessary to remove any remaining film.
+4.4 Temperature effects on the electrometric measurement of pH arise from two
+sources. The first is caused by the change in electrode output at various
+temperatures. This interference can be controlled with instruments having
+temperature compensation or by calibrating the electrode-instrument system at
+the temperature of the samples. The second source is the change of pH
+inherent in the sample at various temperatures. This error is sample dependent
+and cannot be controlled, it should therefore be noted by reporting both the
+pH and temperature at the time of analysis.
+
+--- page 2 ---
+5.0 Apparatus
+5.1 pH Meter-laboratory or field model. A wide variety of instruments are
+commercially available with various specifications and optional equipment.
+5.2 Glass electrode.
+5.3 Reference electrode-a calomel, silver-silver chloride or other reference electrode
+of constant potential may be used.
+NOTE 1:  Combination electrodes incorporating both measuring and reference
+functions are convenient to use and are available with solid, gel type filling
+materials that require minimal maintenance.
+5.4 Magnetic stirrer and Teflon-coated stirring bar.
+5.5 Thermometer or temperature sensor for automatic compensation.
+6.0 Reagents
+6.1 Primary standard buffer salts are available from the National Bureau of
+Standards and should be used in situations where extreme accuracy is
+necessary.
+6.1.1 Preparation of reference solutions from these salts require some special
+precautions and handling  such as low conductivity dilution water,(1)
+drying ovens, and carbon dioxide free purge gas.  These solutions
+should be replaced at least once each month.
+6.2 Secondary standard buffers may be prepared from NBS salts or purchase as a
+solution from commercial vendors. Use of these commercially available
+solutions, that have been validated by comparison to NBS standards, are
+recommended for routine use.
+7.0 Calibration
+7.1 Because of the wide variety of pH meters and accessories, detailed operating
+procedures cannot be incorporated into this method. Each analyst must be
+acquainted with the operation of each system and familiar with all instrument
+functions. Special attention to care of the electrodes is recommended.
+7.2 Each instrument/electrode system must be calibrated at a minimum of two
+points that bracket the expected pH of the samples and are approximately
+three pH units or more apart.
+7.2.1 Various instrument designs may involve use of a "balance" or
+"standardize" dial and/or a slope adjustment as outlined in the
+manufacturer's instructions. Repeat adjustments on successive portions
+of the two buffer solutions as outlined in procedure 8.2 until readings
+are within 0.05 pH units of the buffer solution value.
+8.0 Procedure
+8.1 Standardize the meter and electrode system as outlined in Section 7. 
+8.2 Place the sample or buffer solution in a clean glass beaker using a sufficient
+volume to cover the sensing elements of the electrodes and to give adequate
+clearance for the magnetic stirring bar.
+8.2.1 If field measurements are being made the electrodes may be immersed
+
+--- page 3 ---
+directly in the sample stream to an adequate depth and moved in a
+manner to insure sufficient sample movement across the electrode
+sensing element as indicated by drift free ( < 0.1 pH) readings.
+8.3 If the sample temperature differs by more than 2°C from the buffer solution
+the measured pH values must be corrected. Instruments are equipped with
+automatic or manual compensators that electronically adjust for temperature
+differences. Refer to manufacturer's instructions.
+8.4 After rinsing and gently wiping the electrodes, if necessary, immerse them into
+the sample beaker ar sample stream and stir at a constant rate to provide
+homogeneity and suspension of solids. Rate of stirring should minimize the air
+transfer rate at the air water interface of the sample.  Note and record sample
+pH and temperature. Repeat measurement on successive volumes of sample
+until values differ by less than 0.1 pH units. Two or three volume changes are
+usually sufficient.
+8.5 For acid rain samples it is most important that the magnetic stirrer is not used.
+Instead, swirl the sample gently for a few seconds after the introduction of the
+electrode(s). Allow the electrode(s) the equilibrate. The air-water interface
+should not be disturbed while measurement is being made. If the sample is not
+in equilibrium with the atmosphere, pH values will change as the dissolved
+gases are either absorbed or desorbed. Record sample pH and temperature.
+9.0 Calculation
+9.1 pH meters read directly in pH units. Report pH to the nearest 0.1 unit and
+temperature to the nearest degree °C.
+10.0 Precision and Accuracy
+10.1 Forty-four analysts in twenty laboratories analyzed six synthetic water samples
+containing exact increments of hydrogen-hydroxyl ions, with the following
+results:
+Accuracy as
+pH Units Standard Deviation Bias, Bias,
+pH Units % pH Units
+3.5 0.10 -0.29 -0.01
+3.5 0.11 -0.00
+7.1 0.20 +1.01 +0.07
+7.2 0.18 -0.03 -0.002
+8.0 0.13 -0.12 -0.01
+8.0 0.12 +0.16 +0.01
+(FWPCA Method Study 1, Mineral and Physical Analyses)
+10.2 In a single laboratory (EMSL), using surface water samples at an average pH
+of 7.7, the standard deviation was± 0.1.
+
+--- page 4 ---
+Bibliography
+1. Standard Methods for the Examination of Water and Wastewater, 14th Edition, p 460,
+(1975).
+2. Annual Book of ASTM Standards, Part 31, "Water", Standard D1293-65, p 178 (1976).
+3. Peden, M. E. and Skowron, L. M., Ionic Stability of Precipitation Samples,
+Atmospheric Environment, Vol. 12, pp. 2343-2349, 1978.

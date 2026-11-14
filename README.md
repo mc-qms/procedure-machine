@@ -6,7 +6,7 @@ Give it a purpose, a scope, and your source documents — guidance, instrument m
 
 ## How it works
 
-1. **Purpose & scope** — you say what document you want, what it covers, and what template to use. SOPs and test methods are in scope; policy, work instructions, and protocols are flagged out of scope.
+1. **Purpose & scope** — you say what document you want, what it covers, and what template to use. SOPs and test methods are in scope; policy, work instructions, and protocols are flagged out of scope. Or pick the built-in example — a pH test method from US EPA Method 150.1, source included — and watch a full run without bringing a document.
 2. **Fetch & intake** — source links are fetched (public links only) or files uploaded. Every source is read and recorded with `docsrc.py` (OK / PARTIAL / UNREADABLE). A source that cannot be read stops that source; it is never filled in from another.
 3. **Packet builder** — the relevant sections are pulled out verbatim, labelled by source and section, with a model relevance check per section. Target 8,000–12,000 tokens, hard cap 20,000. A section is included whole or not at all.
 4. **Drafting** — the drafting model writes draft v1 from the packet. What it cannot ground in the packet becomes a gap marker, never invented text, and the deterministic fills (Records, References, Responsibilities) come from the packet itself.
@@ -50,6 +50,7 @@ The pipeline also runs headlessly from the scripts — that is how it was built 
 
 ```
 app.py                  Streamlit front end (pipeline view, human gates, download)
+examples/               the built-in example source (US EPA Method 150.1 text, public domain) the example picker loads
 requirements.txt        streamlit + pypdf
 .streamlit/
   secrets.toml.example  template for Streamlit Secrets (key + prompts, no real values)
