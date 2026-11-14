@@ -1953,40 +1953,70 @@ def main():
         stage_box(_num, _label, _role, _desc, st.session_state.stage_status[_key], detail)
 
     # --- Download
+    # Presentation (Nov 14, 2026): one headline draft, not a wall
+    # of near-identical buttons. The final draft headlines when it
+    # exists; before that, the latest version headlines, labelled
+    # as what it is — a draft so far, not a final. Earlier versions
+    # and the source packet sit in one expander, still one click
+    # away. Downloads never lock (Manuel, Nov 13, 2026): every
+    # version stays downloadable from the moment it exists.
     st.header("3. Download")
-    st.write("The final draft, as it stands, including any flagged gap "
-             "markers. Labelled Discussion Draft.")
-    _final = os.path.join(session_dir, "draft_final.md")
-    if os.path.exists(_final):
-        _n = len(_find_markers(_draft_text(session_dir, "draft_final.md")))
-        if _n:
-            # Warn, never lock (Manuel, Nov 13, 2026): the lock hid
-            # every version at the end of a run that had been free
-            # to download all along, and the extra answering round
-            # after cold read 2 is gone — the final draft is it.
-            st.warning(f"The final draft still has {_n} flagged gap(s) — it is a list of questions as much as a draft. "
-                       "It is labelled Discussion Draft, gaps visible, nothing invented.")
-    for fname in ("draft_final.md", "draft_v3.md", "draft_v2.md", "draft_v1.md", "source_packet.md"):
+    _dl_order = ("draft_final.md", "draft_v3.md", "draft_v2.md", "draft_v1.md")
+    _dl_present = [f for f in _dl_order
+                   if os.path.exists(os.path.join(session_dir, f))]
+    _headline = _dl_present[0] if _dl_present else None
+    _packet_md = os.path.join(session_dir, "source_packet.md")
+    _has_packet = os.path.exists(_packet_md)
+
+    def _dl_buttons(fname, primary=False):
         path = os.path.join(session_dir, fname)
-        if os.path.exists(path):
-            with open(path, "rb") as f:
-                st.download_button(f"Download {fname}", f.read(), file_name=fname)
-            if fname.startswith("draft_"):
-                # RTF version of the same draft, for Word: same
-                # content, including the Discussion Draft status and
-                # any flagged gap markers. Generated on demand from
-                # the .md, so it never goes stale.
-                rtf_name = fname.replace(".md", ".rtf")
-                rtf_path = os.path.join(session_dir, rtf_name)
-                if (not os.path.exists(rtf_path)
-                        or os.path.getmtime(rtf_path) < os.path.getmtime(path)):
-                    run(["python3", os.path.join(BASE, "agents/drafting-agent/scripts/md_to_rtf.py"),
-                         path, rtf_path])
-                if os.path.exists(rtf_path):
-                    with open(rtf_path, "rb") as f:
-                        st.download_button(f"Download {rtf_name} (Word)", f.read(), file_name=rtf_name)
-    if not os.path.exists(session_dir):
+        with open(path, "rb") as f:
+            st.download_button(f"Download {fname}", f.read(), file_name=fname,
+                               type="primary" if primary else "secondary")
+        if fname.startswith("draft_"):
+            # RTF version of the same draft, for Word: same
+            # content, including the Discussion Draft status and
+            # any flagged gap markers. Generated on demand from
+            # the .md, so it never goes stale.
+            rtf_name = fname.replace(".md", ".rtf")
+            rtf_path = os.path.join(session_dir, rtf_name)
+            if (not os.path.exists(rtf_path)
+                    or os.path.getmtime(rtf_path) < os.path.getmtime(path)):
+                run(["python3", os.path.join(BASE, "agents/drafting-agent/scripts/md_to_rtf.py"),
+                     path, rtf_path])
+            if os.path.exists(rtf_path):
+                with open(rtf_path, "rb") as f:
+                    st.download_button(f"Download {rtf_name} (Word)", f.read(), file_name=rtf_name)
+
+    if _headline is None and not _has_packet:
         st.caption("No draft yet in this session. Run the pipeline first.")
+    else:
+        if _headline == "draft_final.md":
+            st.write("The final draft, as it stands, including any flagged gap "
+                     "markers. Labelled Discussion Draft.")
+            _n = len(_find_markers(_draft_text(session_dir, "draft_final.md")))
+            if _n:
+                # Warn, never lock: the warning states the gap
+                # count; it never withholds the file.
+                st.warning(f"The final draft still has {_n} flagged gap(s) — it is a list of questions as much as a draft. "
+                           "It is labelled Discussion Draft, gaps visible, nothing invented.")
+        elif _headline:
+            st.write("The latest draft so far, as it stands, including any flagged "
+                     "gap markers. The run has not finished, so this is not the "
+                     "final draft. Labelled Discussion Draft.")
+        else:
+            st.write("No draft yet — drafts appear here as the loop produces them.")
+        if _headline:
+            _dl_buttons(_headline, primary=True)
+        _rest = [f for f in _dl_present if f != _headline]
+        if _rest or _has_packet:
+            with st.expander("Earlier versions and the source packet"):
+                for fname in _rest:
+                    _dl_buttons(fname)
+                if _has_packet:
+                    with open(_packet_md, "rb") as f:
+                        st.download_button("Download source_packet.md", f.read(),
+                                           file_name="source_packet.md")
 
     # --- Session cleanup (moved to the bottom of the page,
     # Nov 14, 2026): clearing and resetting rendered in section 1,
