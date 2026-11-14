@@ -25,7 +25,9 @@ Deploy: Streamlit Community Cloud, public repo, key in Settings
 -> Secrets as OPENROUTER_API_KEY.
 """
 
+import difflib
 import hashlib
+import html
 import json
 import os
 import re
@@ -337,6 +339,8 @@ def _clear_derived(session_dir):
                "draft_v1.md", "draft_v1.txt", "draft_v1_summary.json",
                "draft_v2.md", "draft_v2.txt",
                "draft_v3.md", "draft_v3.txt",
+               "draft_v4.md", "draft_v4.txt",
+               "draft_v5.md", "draft_v5.txt",
                "draft_final.md", "draft_final.txt",
                "hfe_findings.json",
                "cold_read_findings_1.json", "cold_read_findings_2.json",
@@ -362,7 +366,7 @@ def _run_exists(session_dir):
     if st.session_state.get("loop_step"):
         return True
     for name in ("draft_v1.md", "draft_v2.md", "draft_v3.md",
-                 "draft_final.md"):
+                 "draft_v4.md", "draft_v5.md", "draft_final.md"):
         if os.path.exists(os.path.join(session_dir, name)):
             return True
     return False
@@ -796,6 +800,83 @@ def _draft_text(session_dir, fname):
         return f.read()
 
 
+# --- Draft viewer / redline (Nov 14, 2026) ---
+# The version chain, in order: (file, label, the color that step's
+# changes wear in redline mode). The first draft wears no color —
+# it is the baseline everything else is measured against.
+_VIEW_CHAIN = (
+    ("draft_v1.md", "V1 · First draft", None),
+    ("draft_v2.md", "V2 · After the human-factors pass", "#6cb2f5"),
+    ("draft_v3.md", "V3 · After cold read 1", "#b18cff"),
+    ("draft_v4.md", "V4 · After your answers", "#7bc47f"),
+    ("draft_v5.md", "V5 · After cold read 2", "#f0a35e"),
+    ("draft_final.md", "Final draft", "#f27d8a"),
+)
+
+
+def _rl_line(line, color=None, deleted=False):
+    """One draft line as an HTML div for the redline view."""
+    esc = html.escape(line)
+    esc = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", esc)
+    style = "margin:0 0 7px;white-space:pre-wrap;word-wrap:break-word;"
+    if line.startswith("### "):
+        esc, style = esc[4:], style + "font-size:15px;font-weight:600;"
+    elif line.startswith("## "):
+        esc, style = esc[3:], style + "font-size:16.5px;font-weight:700;"
+    elif line.startswith("# "):
+        esc, style = esc[2:], style + "font-size:19px;font-weight:700;"
+    if "[AUTHOR INPUT REQUIRED" in line or "[Normal practice" in line:
+        style += ("background:rgba(240,200,60,.10);"
+                  "border-left:3px solid #f0c83c;padding-left:8px;")
+    if color:
+        style += f"color:{color};"
+    if deleted:
+        return f'<div style="{style}opacity:.75;"><s>{esc}</s></div>'
+    return f'<div style="{style}">{esc}</div>'
+
+
+def _redline_html(session_dir, present, upto_idx):
+    """Render the draft at present[upto_idx] as HTML with every
+    changed line colored by the step that changed it. Attribution
+    is a plain line diff between consecutive saved versions —
+    deterministic, no model. Lines removed by the most recent step
+    show struck through, in that step's color, where they stood."""
+    files = [c[0] for c in present[: upto_idx + 1]]
+    color_of = {c[0]: c[2] for c in present}
+    texts = {f: _draft_text(session_dir, f).splitlines() for f in files}
+    cur = [(line, files[0]) for line in texts[files[0]]]
+    deletions = {}
+    for f in files[1:]:
+        new_lines = texts[f]
+        sm = difflib.SequenceMatcher(
+            None, [line for line, _ in cur], new_lines, autojunk=False)
+        new_cur, deletions = [], {}
+        for tag, i1, i2, j1, j2 in sm.get_opcodes():
+            if tag == "equal":
+                new_cur.extend(cur[i1:i2])
+            elif tag == "delete":
+                deletions.setdefault(len(new_cur), []).extend(
+                    (line, f) for line, _ in cur[i1:i2])
+            elif tag == "insert":
+                new_cur.extend((line, f) for line in new_lines[j1:j2])
+            elif tag == "replace":
+                deletions.setdefault(len(new_cur), []).extend(
+                    (line, f) for line, _ in cur[i1:i2])
+                new_cur.extend((line, f) for line in new_lines[j1:j2])
+        cur = new_cur
+    parts = []
+    for idx, (line, origin) in enumerate(cur):
+        for dline, dstep in deletions.get(idx, []):
+            if dline.strip():
+                parts.append(_rl_line(dline, color_of.get(dstep), deleted=True))
+        if line.strip():
+            parts.append(_rl_line(line, color_of.get(origin)))
+    for dline, dstep in deletions.get(len(cur), []):
+        if dline.strip():
+            parts.append(_rl_line(dline, color_of.get(dstep), deleted=True))
+    return "".join(parts)
+
+
 def _packet_text(session_dir):
     return _draft_text(session_dir, "source_packet.md")
 
@@ -815,11 +896,17 @@ def _pause_questions(session_dir, current):
     return [m for m in markers if _marker_body(m) not in shown_bodies]
 
 
-def _apply_pause_answers(session_dir, current, answers):
+def _apply_pause_answers(session_dir, current, answers, target=None):
     """Apply the human's pause answers to the current draft, one
     drafting revision with the answers as AUTHOR INPUT. Returns
     (ok, remaining_markers, error). Same shape as the section-3
-    Apply, but on the loop's current draft instead of the final."""
+    Apply, but on the loop's current draft instead of the final.
+    The revision is written to `target` when given — each loop
+    step keeps its own draft file (pause 1 -> draft_v4.md,
+    pause 2 -> draft_final.md) so no version is silently
+    overwritten (Nov 14, 2026)."""
+    if target is None:
+        target = current
     packet_md = _packet_text(session_dir)
     model = _secret("MODEL_DRAFTING") or "openai/gpt-6-luna"
     drafting_prompt = _secret("DRAFTING_SYSTEM_PROMPT")
@@ -837,12 +924,12 @@ def _apply_pause_answers(session_dir, current, answers):
                             "pause", restore_fills=True)
     if not ok:
         return False, 0, new_draft
-    with open(os.path.join(session_dir, current), "w") as f:
+    with open(os.path.join(session_dir, target), "w") as f:
         f.write(new_draft)
-    with open(os.path.join(session_dir, current.replace(".md", ".txt")), "w") as f:
+    with open(os.path.join(session_dir, target.replace(".md", ".txt")), "w") as f:
         f.write(new_draft)
     code, out = run(["python3", os.path.join(BASE, "skills/source-intake/scripts/docsrc.py"),
-                     "check", os.path.join(session_dir, current.replace(".md", ".txt"))],
+                     "check", os.path.join(session_dir, target.replace(".md", ".txt"))],
                     cwd=session_dir)
     if code != 0:
         return False, 0, f"Delivery check failed: {out.strip()[:300]}"
@@ -1101,7 +1188,7 @@ def _run_loop_chunk(session_dir):
                 if not ok:
                     st.session_state.stage_status[_draft_key] = "failed"
                     return f"Drafting corrections failed: {new_draft}"
-                nxt = "draft_v3.md" if round_no == 1 else "draft_final.md"
+                nxt = "draft_v3.md" if round_no == 1 else "draft_v5.md"
                 with open(os.path.join(session_dir, nxt), "w") as f:
                     f.write(new_draft)
                 with open(os.path.join(session_dir, nxt.replace(".md", ".txt")), "w") as f:
@@ -1111,7 +1198,7 @@ def _run_loop_chunk(session_dir):
                 st.session_state.stage_status[_draft_key] = "done"
                 st.session_state.setdefault("loop_detail", {})[_draft_key] = (
                     "Draft v3 ready (Discussion Draft)." if round_no == 1
-                    else "Final draft ready (Discussion Draft).")
+                    else "Draft v5 ready (Discussion Draft).")
             else:
                 # Nothing new to fix; the current draft stands.
                 st.session_state.stage_status[_draft_key] = "done"
@@ -1862,14 +1949,17 @@ def main():
             _given = {m: a.strip() for m, a in _answers.items() if a.strip()}
             if _given:
                 st.session_state.stage_status[_after_key] = "running"
+                _target = "draft_v4.md" if _round_no == 1 else "draft_final.md"
                 with st.spinner("Applying your answers…"):
                     _ok, _remaining, _err = _apply_pause_answers(
                         os.path.join(SESSIONS, st.session_state.session_id),
-                        st.session_state.get("loop_current", "draft_v2.md"), _given)
+                        st.session_state.get("loop_current", "draft_v2.md"), _given,
+                        target=_target)
                 if not _ok:
                     st.session_state.stage_status[_after_key] = "failed"
                     st.error(f"Could not apply the answers: {_err}")
                     st.stop()
+                st.session_state.loop_current = _target
                 st.session_state.stage_status[_after_key] = "done"
                 st.session_state.setdefault("loop_detail", {})[_after_key] = (
                     f"Answers applied. {_remaining} gap(s) still flagged in this draft."
@@ -1952,6 +2042,51 @@ def main():
             detail = st.session_state.get("loop_detail", {}).get(_key, "")
         stage_box(_num, _label, _role, _desc, st.session_state.stage_status[_key], detail)
 
+    # --- Draft viewer
+    # Presentation (Nov 14, 2026): the drafts are the product —
+    # read them on the page instead of downloading a markdown
+    # file (on a phone, most visitors never would). The step
+    # list always shows all six steps; a step that produced no
+    # new draft says so and shows the draft as it stood, so a
+    # quiet step reads as a fact, not a missing file. Redline
+    # mode colors every change by the step that made it.
+    _present = [c for c in _VIEW_CHAIN
+                if os.path.exists(os.path.join(session_dir, c[0]))]
+    if _present:
+        st.subheader("Read the drafts")
+        _present_files = [c[0] for c in _present]
+        _labels = [
+            _lab if _f in _present_files else _lab + " — no changes at this step"
+            for _f, _lab, _c in _VIEW_CHAIN]
+        _default = max(i for i, c in enumerate(_VIEW_CHAIN)
+                       if c[0] in _present_files)
+        _pick = st.selectbox("Version", _labels, index=_default,
+                             key="viewer_pick")
+        _idx = _labels.index(_pick)
+        _standing = None
+        for _j in range(_idx, -1, -1):
+            if _VIEW_CHAIN[_j][0] in _present_files:
+                _standing = _VIEW_CHAIN[_j][0]
+                break
+        if _standing != _VIEW_CHAIN[_idx][0]:
+            st.info("No changes at this step — the draft carried through "
+                    "unchanged. Showing the draft as it stood.")
+        _red = st.checkbox(
+            "Redline — color each change by the step that made it",
+            value=True, key="viewer_redline")
+        if _red and _standing != _present_files[0]:
+            st.markdown(
+                _redline_html(session_dir, _present,
+                              _present_files.index(_standing)),
+                unsafe_allow_html=True)
+            st.caption(
+                "Blue: human-factors pass · Violet: cold read 1 fixes · "
+                "Green: your answers · Orange: cold read 2 fixes · "
+                "Rose: the final pass · Struck through: removed by that "
+                "step · Yellow bar: a flagged gap.")
+        else:
+            st.markdown(_draft_text(session_dir, _standing))
+
     # --- Download
     # Presentation (Nov 14, 2026): one headline draft, not a wall
     # of near-identical buttons. The final draft headlines when it
@@ -1960,8 +2095,9 @@ def main():
     # and the source packet sit in one expander, still one click
     # away. Downloads never lock (Manuel, Nov 13, 2026): every
     # version stays downloadable from the moment it exists.
-    st.header("3. Download")
-    _dl_order = ("draft_final.md", "draft_v3.md", "draft_v2.md", "draft_v1.md")
+    st.header("3. Drafts and downloads")
+    _dl_order = ("draft_final.md", "draft_v5.md", "draft_v4.md",
+                 "draft_v3.md", "draft_v2.md", "draft_v1.md")
     _dl_present = [f for f in _dl_order
                    if os.path.exists(os.path.join(session_dir, f))]
     _headline = _dl_present[0] if _dl_present else None
