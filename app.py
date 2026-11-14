@@ -1701,100 +1701,105 @@ def main():
                         st.session_state.lookup = _run_lookup(session_dir)
                     st.session_state.save_result = "Saved, and the packet rebuilt from the corrected values."
             st.rerun()
-    # The drafting button lives here in section 1, right where the
+    # The drafting gate lives here in section 1, right where the
     # packet was built — not at the bottom of the Pipeline view
     # (moved Nov 11, 2026: the gate was too far from the work).
-    # It only appears once a packet exists, so it is never a dead
-    # button.
+    # The whole gate — packet-built note, check results, and the
+    # Start drafting button — renders only once a packet exists,
+    # at the foot of the packet block (Nov 14, 2026: the button
+    # previously rendered unconditionally, stacked directly under
+    # Build the packet in a fresh or reloaded session, where it
+    # read as a second step instead of the gate it is).
     _packet_path = os.path.join(SESSIONS, st.session_state.session_id, "source_packet.json")
+    _proceed = False
     if os.path.exists(_packet_path):
         st.write("The packet is built. This next step runs the loop — drafting, HFE, cold read twice — and it is the expensive one, so it waits for you.")
-    # Packet check result at the human gate (v18): what the check
-    # found, what it fetched, what is still missing. Read from
-    # disk — session state does not survive a page reload.
-    _check_path = os.path.join(SESSIONS, st.session_state.session_id, "packet_check.json")
-    _check = None
-    try:
-        _check = json.load(open(_check_path))
-    except (OSError, json.JSONDecodeError):
+        # Packet check result at the human gate (v18): what the check
+        # found, what it fetched, what is still missing. Read from
+        # disk — session state does not survive a page reload.
+        _check_path = os.path.join(SESSIONS, st.session_state.session_id, "packet_check.json")
         _check = None
-    if _check is not None:
-        _fetched = _check.get("fetched", [])
-        _covered = _check.get("covered", [])
-        _missing = _check.get("still_missing", [])
-        # "Nothing missing" is only true on a direct fit (test-048):
-        # on a partial fit the fetchable-topics lists are empty too,
-        # and printing it contradicted the partial-fit banner right
-        # below it in the Cary 60 live run.
-        if not _fetched and not _covered and not _missing \
-                and _check.get("fit", "DIRECT_FIT") == "DIRECT_FIT":
-            st.write("Packet check: nothing missing for this purpose.")
-        elif _fetched or _covered or _missing:
-            _parts = []
-            if _fetched:
-                _parts.append("fetched " + str(len(_fetched)) + " section(s) from your sources: " +
-                              ", ".join(f.get("title", "?") for f in _fetched))
-            if _covered:
-                _parts.append(str(len(_covered)) + " topic(s) were already in the packet: " +
-                              ", ".join(f.get("topic", "?") for f in _covered))
-            if _missing:
-                _parts.append("still missing: " +
-                              ", ".join(f.get("topic", "?") for f in _missing))
-            st.write("Packet check: " + "; ".join(_parts) + ".")
-            if _missing:
-                st.write("For the still-missing topics you can add a source, narrow the scope, or proceed and answer them yourself.")
-    # Fit at the human gate (v24/v26): a partial fit is a non-blocking
-    # banner (the source has the technical rules; the workflow steps
-    # will be flagged inline), an unrelated fit halts drafting with
-    # a "Proceed anyway" override. A check written before v24 has no
-    # fit field and reads as DIRECT. The lookup (v26) is what the
-    # user sees for a partial fit: what the agent obtained about each
-    # uncovered step and whether it covers the gap — obtained, then
-    # assessed, not a built-in explanation (v25, removed). Read from
-    # disk — session state does not survive a page reload.
-    _fit = (_check or {}).get("fit", "DIRECT_FIT")
-    _steps = (_check or {}).get("uncovered_steps", []) if _check else []
-    _lookup = None
-    try:
-        _lookup = json.load(open(os.path.join(SESSIONS, st.session_state.session_id, "lookup.json")))
-    except (OSError, json.JSONDecodeError):
+        try:
+            _check = json.load(open(_check_path))
+        except (OSError, json.JSONDecodeError):
+            _check = None
+        if _check is not None:
+            _fetched = _check.get("fetched", [])
+            _covered = _check.get("covered", [])
+            _missing = _check.get("still_missing", [])
+            # "Nothing missing" is only true on a direct fit (test-048):
+            # on a partial fit the fetchable-topics lists are empty too,
+            # and printing it contradicted the partial-fit banner right
+            # below it in the Cary 60 live run.
+            if not _fetched and not _covered and not _missing \
+                    and _check.get("fit", "DIRECT_FIT") == "DIRECT_FIT":
+                st.write("Packet check: nothing missing for this purpose.")
+            elif _fetched or _covered or _missing:
+                _parts = []
+                if _fetched:
+                    _parts.append("fetched " + str(len(_fetched)) + " section(s) from your sources: " +
+                                  ", ".join(f.get("title", "?") for f in _fetched))
+                if _covered:
+                    _parts.append(str(len(_covered)) + " topic(s) were already in the packet: " +
+                                  ", ".join(f.get("topic", "?") for f in _covered))
+                if _missing:
+                    _parts.append("still missing: " +
+                                  ", ".join(f.get("topic", "?") for f in _missing))
+                st.write("Packet check: " + "; ".join(_parts) + ".")
+                if _missing:
+                    st.write("For the still-missing topics you can add a source, narrow the scope, or proceed and answer them yourself.")
+        # Fit at the human gate (v24/v26): a partial fit is a non-blocking
+        # banner (the source has the technical rules; the workflow steps
+        # will be flagged inline), an unrelated fit halts drafting with
+        # a "Proceed anyway" override. A check written before v24 has no
+        # fit field and reads as DIRECT. The lookup (v26) is what the
+        # user sees for a partial fit: what the agent obtained about each
+        # uncovered step and whether it covers the gap — obtained, then
+        # assessed, not a built-in explanation (v25, removed). Read from
+        # disk — session state does not survive a page reload.
+        _fit = (_check or {}).get("fit", "DIRECT_FIT")
+        _steps = (_check or {}).get("uncovered_steps", []) if _check else []
         _lookup = None
-    if _fit == "UNRELATED_MISMATCH":
-        _missing = (_check or {}).get("still_missing", [])
-        _msg = "This source doesn't cover what you asked for. " + \
-            ("Still missing: " + ", ".join(f.get("topic", "?") for f in _missing) + ". " if _missing else "") + \
-            "The draft can't be built from it. Add a source that describes what you asked for, narrow the scope, or proceed anyway."
-        st.error(_msg)
-        _proceed = st.button("Start drafting anyway", type="primary")
-    else:
-        if _fit == "PARTIAL_REGULATORY_FIT":
-            _lookups = (_lookup or {}).get("lookups", [])
-            # The lookup block names each step, so the banner does not
-            # repeat the list (v27: the double listing was half the
-            # verbosity). The list stays as a fallback when no lookup
-            # ran.
-            _banner = "Source covers the technical / regulatory criteria; the site-specific workflow steps will be flagged inline for author input."
-            if not _lookups and _steps:
-                _banner += " Uncovered steps: " + ", ".join(_steps) + "."
-            st.info(_banner)
-            if _lookups:
-                st.write("What I found about the uncovered steps (looked up, then assessed):")
-                for _lk in _lookups:
-                    _label = {"covers": "covers this step",
-                              "framework_only": "covers the framework — the operational mechanics are still site-specific (your internal SOPs)",
-                              "not_found": "no relevant guidance found",
-                              "error": "lookup failed"}.get(_lk.get("assessment", "error"), "lookup failed")
-                    # One compact line per step (v27). The assessment
-                    # note is kept in lookup.json for the record but
-                    # not shown — it restated the found text and the
-                    # label, and that repetition was the other half
-                    # of the verbosity.
-                    _line = f"- {_lk.get('step', '?')}: {_lk.get('found', '')}"
-                    if _lk.get("sources"):
-                        _line += f" (Sources: {', '.join(_lk['sources'])}.)"
-                    _line += f" Assessment: {_label}."
-                    st.write(_line)
-        _proceed = st.button("Start drafting", type="primary")
+        try:
+            _lookup = json.load(open(os.path.join(SESSIONS, st.session_state.session_id, "lookup.json")))
+        except (OSError, json.JSONDecodeError):
+            _lookup = None
+        if _fit == "UNRELATED_MISMATCH":
+            _missing = (_check or {}).get("still_missing", [])
+            _msg = "This source doesn't cover what you asked for. " + \
+                ("Still missing: " + ", ".join(f.get("topic", "?") for f in _missing) + ". " if _missing else "") + \
+                "The draft can't be built from it. Add a source that describes what you asked for, narrow the scope, or proceed anyway."
+            st.error(_msg)
+            _proceed = st.button("Start drafting anyway", type="primary")
+        else:
+            if _fit == "PARTIAL_REGULATORY_FIT":
+                _lookups = (_lookup or {}).get("lookups", [])
+                # The lookup block names each step, so the banner does not
+                # repeat the list (v27: the double listing was half the
+                # verbosity). The list stays as a fallback when no lookup
+                # ran.
+                _banner = "Source covers the technical / regulatory criteria; the site-specific workflow steps will be flagged inline for author input."
+                if not _lookups and _steps:
+                    _banner += " Uncovered steps: " + ", ".join(_steps) + "."
+                st.info(_banner)
+                if _lookups:
+                    st.write("What I found about the uncovered steps (looked up, then assessed):")
+                    for _lk in _lookups:
+                        _label = {"covers": "covers this step",
+                                  "framework_only": "covers the framework — the operational mechanics are still site-specific (your internal SOPs)",
+                                  "not_found": "no relevant guidance found",
+                                  "error": "lookup failed"}.get(_lk.get("assessment", "error"), "lookup failed")
+                        # One compact line per step (v27). The assessment
+                        # note is kept in lookup.json for the record but
+                        # not shown — it restated the found text and the
+                        # label, and that repetition was the other half
+                        # of the verbosity.
+                        _line = f"- {_lk.get('step', '?')}: {_lk.get('found', '')}"
+                        if _lk.get("sources"):
+                            _line += f" (Sources: {', '.join(_lk['sources'])}.)"
+                        _line += f" Assessment: {_label}."
+                        st.write(_line)
+            _proceed = st.button("Start drafting", type="primary")
     _loop_midflight = st.session_state.get("loop_step") in ("start", "cold1", "pause1", "cold2", "pause2", "finish")
     if os.path.exists(_packet_path) and not _loop_midflight and _proceed:
         session_dir = os.path.join(SESSIONS, st.session_state.session_id)
