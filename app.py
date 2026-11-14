@@ -9,7 +9,7 @@ it is never printed, logged, or shown in the UI.
 
 Pipeline, in order:
   purpose-scope (describe in plain words) -> fetch-link -> source-intake
-  -> packet-builder (confirm: Proceed to drafting?)
+  -> packet-builder (confirm: Start drafting)
   -> drafting -> HFE -> drafting fixes
   -> cold read -> dedup.py -> drafting fixes -> human-input pause
   -> cold read again -> dedup.py -> drafting fixes -> human-input pause
@@ -1289,77 +1289,13 @@ def main():
     _stored = _stored_sources(_session_dir)
     if _stored:
         st.write("Already in this session: " + ", ".join(_stored) +
-                 ". A new build includes these unless you clear them.")
-        if st.session_state.get("confirm_clear"):
-            st.write("This deletes " + str(len(_stored)) + " source file(s) (" +
-                     ", ".join(_stored) + ") and the packet and drafts from this session. "
-                     "The files are yours — you would need to upload or fetch them again.")
-            _yes, _no = st.columns(2)
-            with _yes:
-                if st.button("Yes, clear them"):
-                    _deleted = _clear_session_files(_session_dir)
-                    _clear_derived(_session_dir)
-                    for _k in ("loop_step", "loop_current", "pause_shown",
-                               "pause_questions", "loop_detail", "loop_result",
-                               "pause_result", "download_unlocked", "packet_check",
-                               "extracted", "purpose_scope", "template_pick",
-                               "save_result", "ps-purpose", "ps-scope-in",
-                               "ps-scope-out", "ps-user"):
-                        st.session_state.pop(_k, None)
-                    st.session_state.pop("confirm_clear", None)
-                    st.session_state.clear_result = (
-                        f"Cleared {len(_deleted)} source file(s). This session is empty — "
-                        "upload or fetch a source to start a new build.")
-                    st.rerun()
-            with _no:
-                if st.button("Cancel"):
-                    st.session_state.pop("confirm_clear", None)
-                    st.rerun()
-        elif st.button("Clear stored sources"):
-            st.session_state.confirm_clear = True
-            st.rerun()
-    if st.session_state.get("clear_result"):
-        st.success(st.session_state.pop("clear_result"))
+                 ". A new build includes these unless you clear them — "
+                 "“Clear stored sources” is at the bottom of the page.")
 
-    # Complete reset (test-060, Nov 13, 2026): the clear above
-    # removes stored sources, but a user trying several documents
-    # in one session needs everything gone — packet, drafts,
-    # findings, purpose, all of it — so nothing from one document
-    # can follow them into the next. Shown whenever the session
-    # folder holds anything at all.
-    _has_anything = (os.path.isdir(_session_dir)
-                     and bool(os.listdir(_session_dir)))
-    if _has_anything:
-        if st.session_state.get("confirm_reset"):
-            st.write("This deletes EVERYTHING in this session: the source "
-                     "files, the packet, every draft, and all findings. "
-                     "Nothing is kept. Your original files on your own "
-                     "device are not touched.")
-            _ryes, _rno = st.columns(2)
-            with _ryes:
-                if st.button("Yes, reset everything"):
-                    _clear_derived(_session_dir)
-                    _n_reset = _reset_session_files(_session_dir)
-                    for _k in ("loop_step", "loop_current", "pause_shown",
-                               "pause_questions", "loop_detail", "loop_result",
-                               "pause_result", "download_unlocked", "packet_check",
-                               "extracted", "purpose_scope", "template_pick",
-                               "save_result", "ps-purpose", "ps-scope-in",
-                               "ps-scope-out", "ps-user", "confirm_clear"):
-                        st.session_state.pop(_k, None)
-                    st.session_state.pop("confirm_reset", None)
-                    st.session_state.clear_result = (
-                        f"Reset complete — {_n_reset} file(s) deleted. This "
-                        "session is empty: describe a document and add a "
-                        "source to start fresh.")
-                    st.rerun()
-            with _rno:
-                if st.button("Cancel reset"):
-                    st.session_state.pop("confirm_reset", None)
-                    st.rerun()
-        elif st.button("Reset everything (clear this session)"):
-            st.session_state.confirm_reset = True
-            st.rerun()
+    # Clear and reset used to render here, in a stack with the
+    # forward buttons at the same visual weight; they are
+    # housekeeping, so they live at the bottom of the page now
+    # (Nov 14, 2026).
 
     # Rebuild guard (Nov 13, 2026): building again discards the
     # current run's drafts and pause answers — silently, before this
@@ -1382,7 +1318,7 @@ def main():
             if st.button("Cancel rebuild"):
                 st.session_state.pop("confirm_rebuild", None)
                 st.rerun()
-    _build_pressed = st.button("Build the packet")
+    _build_pressed = st.button("Build the packet", type="primary")
     _build_go = st.session_state.pop("rebuild_go", False)
     if _build_pressed or _build_go:
         if _build_pressed and not _build_go and _run_exists(_session_dir):
@@ -1624,7 +1560,7 @@ def main():
             st.session_state.packet_check = _run_packet_check(session_dir)
             st.session_state.lookup = _run_lookup(session_dir)
         st.session_state.stage_status["packet-builder"] = "needs-you"
-        st.success("Packet built. Check how the machine read your description below, fix anything it got wrong, then press “Proceed to drafting?” just below — that is the human gate.")
+        st.success("Packet built. Check how the machine read your description below, fix anything it got wrong, then press “Start drafting” below — that is the human gate.")
         _pkt = json.load(open(os.path.join(session_dir, "source_packet.json")))
         if not _pkt.get("relevant_sections"):
             st.warning("Your sources had nothing the packet could use — the draft will be all flagged gaps. Add a richer source document (a manual, a guidance PDF) for a fuller draft.")
@@ -1772,7 +1708,7 @@ def main():
     # button.
     _packet_path = os.path.join(SESSIONS, st.session_state.session_id, "source_packet.json")
     if os.path.exists(_packet_path):
-        st.write("The packet is built. You can review it in section 2 below. This next step runs the loop — drafting, HFE, cold read twice — and it is the expensive one, so it waits for you.")
+        st.write("The packet is built. This next step runs the loop — drafting, HFE, cold read twice — and it is the expensive one, so it waits for you.")
     # Packet check result at the human gate (v18): what the check
     # found, what it fetched, what is still missing. Read from
     # disk — session state does not survive a page reload.
@@ -1829,7 +1765,7 @@ def main():
             ("Still missing: " + ", ".join(f.get("topic", "?") for f in _missing) + ". " if _missing else "") + \
             "The draft can't be built from it. Add a source that describes what you asked for, narrow the scope, or proceed anyway."
         st.error(_msg)
-        _proceed = st.button("Proceed anyway")
+        _proceed = st.button("Start drafting anyway", type="primary")
     else:
         if _fit == "PARTIAL_REGULATORY_FIT":
             _lookups = (_lookup or {}).get("lookups", [])
@@ -1858,7 +1794,7 @@ def main():
                         _line += f" (Sources: {', '.join(_lk['sources'])}.)"
                     _line += f" Assessment: {_label}."
                     st.write(_line)
-        _proceed = st.button("Proceed to drafting?")
+        _proceed = st.button("Start drafting", type="primary")
     _loop_midflight = st.session_state.get("loop_step") in ("start", "cold1", "pause1", "cold2", "pause2", "finish")
     if os.path.exists(_packet_path) and not _loop_midflight and _proceed:
         session_dir = os.path.join(SESSIONS, st.session_state.session_id)
@@ -2046,6 +1982,89 @@ def main():
                         st.download_button(f"Download {rtf_name} (Word)", f.read(), file_name=rtf_name)
     if not os.path.exists(session_dir):
         st.caption("No draft yet in this session. Run the pipeline first.")
+
+    # --- Session cleanup (moved to the bottom of the page,
+    # Nov 14, 2026): clearing and resetting rendered in section 1,
+    # in a stack with the forward buttons and at the same visual
+    # weight, so they read as steps in the flow. They are
+    # housekeeping; down here they sit after the work.
+    _session_dir = os.path.join(SESSIONS, st.session_state.session_id)
+    _stored = _stored_sources(_session_dir)
+    if _stored or st.session_state.get("confirm_clear") \
+            or st.session_state.get("clear_result") \
+            or (os.path.isdir(_session_dir) and bool(os.listdir(_session_dir))):
+        st.divider()
+        st.write("Session cleanup — these remove work from this session only.")
+    if _stored:
+        if st.session_state.get("confirm_clear"):
+            st.write("This deletes " + str(len(_stored)) + " source file(s) (" +
+                     ", ".join(_stored) + ") and the packet and drafts from this session. "
+                     "The files are yours — you would need to upload or fetch them again.")
+            _yes, _no = st.columns(2)
+            with _yes:
+                if st.button("Yes, clear them"):
+                    _deleted = _clear_session_files(_session_dir)
+                    _clear_derived(_session_dir)
+                    for _k in ("loop_step", "loop_current", "pause_shown",
+                               "pause_questions", "loop_detail", "loop_result",
+                               "pause_result", "download_unlocked", "packet_check",
+                               "extracted", "purpose_scope", "template_pick",
+                               "save_result", "ps-purpose", "ps-scope-in",
+                               "ps-scope-out", "ps-user"):
+                        st.session_state.pop(_k, None)
+                    st.session_state.pop("confirm_clear", None)
+                    st.session_state.clear_result = (
+                        f"Cleared {len(_deleted)} source file(s). This session is empty — "
+                        "upload or fetch a source to start a new build.")
+                    st.rerun()
+            with _no:
+                if st.button("Cancel"):
+                    st.session_state.pop("confirm_clear", None)
+                    st.rerun()
+        elif st.button("Clear stored sources"):
+            st.session_state.confirm_clear = True
+            st.rerun()
+    if st.session_state.get("clear_result"):
+        st.success(st.session_state.pop("clear_result"))
+    # Complete reset (test-060, Nov 13, 2026): the clear above
+    # removes stored sources, but a user trying several documents
+    # in one session needs everything gone — packet, drafts,
+    # findings, purpose, all of it — so nothing from one document
+    # can follow them into the next. Shown whenever the session
+    # folder holds anything at all.
+    _has_anything = (os.path.isdir(_session_dir)
+                     and bool(os.listdir(_session_dir)))
+    if _has_anything:
+        if st.session_state.get("confirm_reset"):
+            st.write("This deletes EVERYTHING in this session: the source "
+                     "files, the packet, every draft, and all findings. "
+                     "Nothing is kept. Your original files on your own "
+                     "device are not touched.")
+            _ryes, _rno = st.columns(2)
+            with _ryes:
+                if st.button("Yes, reset everything"):
+                    _clear_derived(_session_dir)
+                    _n_reset = _reset_session_files(_session_dir)
+                    for _k in ("loop_step", "loop_current", "pause_shown",
+                               "pause_questions", "loop_detail", "loop_result",
+                               "pause_result", "download_unlocked", "packet_check",
+                               "extracted", "purpose_scope", "template_pick",
+                               "save_result", "ps-purpose", "ps-scope-in",
+                               "ps-scope-out", "ps-user", "confirm_clear"):
+                        st.session_state.pop(_k, None)
+                    st.session_state.pop("confirm_reset", None)
+                    st.session_state.clear_result = (
+                        f"Reset complete — {_n_reset} file(s) deleted. This "
+                        "session is empty: describe a document and add a "
+                        "source to start fresh.")
+                    st.rerun()
+            with _rno:
+                if st.button("Cancel reset"):
+                    st.session_state.pop("confirm_reset", None)
+                    st.rerun()
+        elif st.button("Reset everything (clear this session)"):
+            st.session_state.confirm_reset = True
+            st.rerun()
 
 
 
