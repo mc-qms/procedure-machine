@@ -33,6 +33,17 @@ Deploy: Streamlit Community Cloud, public repo, key in Settings
 -> Secrets as OPENROUTER_API_KEY.
 """
 
+import streamlit as st
+
+# --- PAGE CONFIGURATION ---
+# First, before every other import: the app's name is the first
+# thing this app declares.
+st.set_page_config(
+    page_title="The Procedure Machine",
+    page_icon="⚙️",
+    layout="centered",
+)
+
 import difflib
 import hashlib
 import html
@@ -44,15 +55,6 @@ import subprocess
 import sys
 import uuid
 from urllib.parse import urlparse
-
-import streamlit as st
-
-# --- PAGE CONFIGURATION ---
-st.set_page_config(
-    page_title="The Procedure Machine",
-    page_icon="⚙️",
-    layout="centered",
-)
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 SESSIONS = os.path.join(BASE, "sessions")
