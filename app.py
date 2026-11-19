@@ -1337,7 +1337,7 @@ def _run_loop_chunk(session_dir):
                     ["python3", os.path.join(BASE, "genesis", "citation_check.py"),
                      "--session-dir", session_dir, "--enforce"])
                 if _fc_code != 0:
-                    return (f"The Genesis citation check failed at delivery: "
+                    return (f"The citation check failed at delivery: "
                             f"{_fc_out.strip()[:300]}")
             st.session_state.stage_status["packet-builder"] = "done"
             st.session_state.loop_step = "done"
@@ -1375,19 +1375,19 @@ try:
 except Exception:  # a broken registry must not take the app down
     GENESIS_REGISTRY = None
 
-GENESIS_INTRO = """**Genesis mode — a document system from nothing.**
+GENESIS_INTRO = """**From public regulations — a document system from nothing.**
 
-The drafting mode starts from your sources: guidance, manuals, an existing system to draft against. Genesis mode starts one step earlier, where there are no sources yet — a new company, a new site, a quality system that doesn't exist.
+**From your documents** — you supply the sources: guidance, manuals, an existing system to draft against. **From public regulations** — the machine fetches the regulations and builds the standard procedures every company of your type needs. It does not fetch manuals or documents for specific equipment, products, or sites, and it won't invent them.
 
 You don't describe your company — you pick the archetype closest to it: monoclonal antibodies, diagnostics, cell therapy, combination products, and the like. The machine shows the procedure system the regulations require for that archetype — the list drawn from ICH Q10 and the CFRs — and you pick the one procedure you need. It fetches the public regulations and guidance for that procedure, drafts the SOP from them, checks every regulatory citation against what it actually fetched, and cold-read audits the result like any other run.
 
-Genesis is currently set up for biotech and life-sciences organizations — the archetypes and the registered procedures are life-sciences ones. Other industries may be added later.
+From public regulations is currently set up for biotech and life-sciences organizations — the archetypes and the registered procedures are life-sciences ones. Other industries may be added later.
 
-The boundary is plain: Genesis builds the standard procedures for your type of company — the quality-system backbone — from public regulation. It does not fetch manuals or documents for specific equipment, products, or sites, and it does not build specialized or company-specific procedures. For a procedure specific to your equipment, product, or site, use Draft from my sources with the documents that govern it — and if you don't have the governing document, neither mode can build it: the machine won't fetch it and won't invent it. Get the document first.
+The boundary is plain: the standard procedures for your type of company — the quality-system backbone — are built from public regulation. It does not fetch manuals or documents for specific equipment, products, or sites, and it does not build specialized or company-specific procedures. For a procedure specific to your equipment, product, or site, use From your documents with the documents that govern it — and if you don't have the governing document, neither way of starting can build it: the machine won't fetch it and won't invent it. Get the document first.
 
 What the regulations leave open is never filled in. Approval authorities, review periods, systems of record, and references to your own documents come back flagged — as placeholders in the draft and a decision list that travels with it, for your later edit in your own system.
 
-A Genesis run ends as a Discussion Draft by design: structure from the regulations; practice from you."""
+A run from public regulations ends as a Discussion Draft by design: structure from the regulations; practice from you."""
 
 # Entry-question copy (Nov 18, 2026, final - user-approved after
 # a design consult): the first question in the app, sorting by
@@ -1680,16 +1680,16 @@ def _genesis_section():
     """Genesis section 1: selections only, then the build. The
     packet gate, the loop, the pipeline view, and the downloads
     below are shared with the drafting mode."""
-    st.header("1. Genesis — start from the regulations")
+    st.header("1. From public regulations")
     reg = GENESIS_REGISTRY
     if reg is None:
-        st.error("The Genesis registry could not be loaded, so Genesis mode "
-                 "is unavailable in this build. The drafting mode is unaffected.")
+        st.error("The registry could not be loaded, so From public regulations "
+                 "is unavailable in this build. From your documents is unaffected.")
         return
     session_dir = os.path.join(SESSIONS, st.session_state.session_id)
     st.write("Pick the archetype closest to your organization, and the one "
              "procedure you need. Every answer is a selection from a standard "
-             "list — nothing about your company is typed in. Genesis builds "
+             "list — nothing about your company is typed in. It builds "
              "one procedure at a time; the checklist shows the whole system "
              "for reference.")
     arch = reg.archetype_by_label(st.selectbox(
@@ -1704,11 +1704,11 @@ def _genesis_section():
         default=["Quality Assurance", "Quality Control laboratory"],
         key="genesis_functions")
     st.caption(f"Regulation stack for this archetype: {arch['reg_stack']}")
-    with st.expander("The procedure system for this archetype (checklist — Genesis builds one at a time)"):
+    with st.expander("The procedure system for this archetype (checklist — built one at a time)"):
         _lines = []
         for item in reg.procedures_for(arch["id"]):
             _lines.append("- " + item["name"] +
-                          (" — Genesis can build this one now"
+                          (" — can be built now"
                            if item["topic_id"] else ""))
         st.text("\n".join(_lines))
     _OTHER = "Something else — describe it in one line"
@@ -1743,14 +1743,14 @@ def _genesis_section():
                 # unrelated topic - Flag Gaps covers gaps, not
                 # substitutions.
                 st.warning(
-                    "Genesis can't build that one yet. Genesis builds "
-                    "the standard procedures for your type of company "
-                    "from public regulation — it does not build "
-                    "specialized or company-specific procedures, and it "
-                    "never substitutes another procedure's sources for "
-                    "the one you asked for.")
-                st.write("The procedures Genesis can build for this "
-                         "archetype:")
+                    "That one can't be built from public regulations "
+                    "yet. Building from public regulations covers the "
+                    "standard procedures for your type of company — it "
+                    "does not build specialized or company-specific "
+                    "procedures, and it never substitutes another "
+                    "procedure's sources for the one you asked for.")
+                st.write("The procedures that can be built from "
+                         "public regulations for this archetype:")
                 for _p in _proc_options:
                     st.write(f"- {_p['name']}")
                 st.write("If the rules for the procedure come from "
@@ -1765,7 +1765,7 @@ def _genesis_section():
         st.write("Registered sources for this procedure (public documents only):")
         for src in topic["sources"]:
             st.write(f"- {src['name']}")
-    _build = st.button("Build the Genesis packet", type="primary",
+    _build = st.button("Build the packet", type="primary",
                        disabled=topic is None)
     if _build and topic:
         err = _genesis_build(session_dir, arch, market, functions, topic,
@@ -1774,7 +1774,7 @@ def _genesis_section():
         if err:
             st.error(err)
             st.stop()
-        st.success("Genesis packet built from the registered public sources. "
+        st.success("Packet built from the registered public sources. "
                    "Check the read record below, then press “Start drafting” "
                    "below — that is the human gate.")
         st.rerun()
@@ -1785,7 +1785,7 @@ def _genesis_section():
         except (OSError, json.JSONDecodeError):
             _intake = None
         if _intake:
-            st.write(f"Genesis run in this session: {_intake.get('title', '?')} "
+            st.write(f"Run from public regulations in this session: {_intake.get('title', '?')} "
                      f"— {_intake.get('archetype_label', '?')}, "
                      f"{_intake.get('market_label', '?')}.")
             for _src in _intake.get("sources", []):
@@ -2727,7 +2727,7 @@ def main():
                 _flags_path = os.path.join(session_dir, "genesis_flags.md")
                 if os.path.exists(_flags_path):
                     with open(_flags_path, "rb") as f:
-                        st.download_button("Download genesis_flags.md (Genesis flag list)", f.read(),
+                        st.download_button("Download genesis_flags.md (flag list)", f.read(),
                                            file_name="genesis_flags.md")
 
     # --- Session cleanup (moved to the bottom of the page,

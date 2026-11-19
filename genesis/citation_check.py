@@ -57,7 +57,7 @@ import sys
 VERSION = "1.0"
 
 REMOVAL_MARKER = ("[AUTHOR INPUT REQUIRED: regulatory citation removed by the "
-                  "Genesis source check - it does not appear in the packet "
+                  "source check - it does not appear in the packet "
                   "sources. Cite a source from the packet, or delete the "
                   "reference.]")
 
@@ -394,8 +394,8 @@ def build_flag_list(session_dir, draft_text, inv, check, removed):
             intake = json.load(open(intake_path))
         except (OSError, json.JSONDecodeError):
             intake = {}
-    lines = ["# Genesis flag list - for your later edit", ""]
-    lines.append("This draft was built by Genesis mode from public sources "
+    lines = ["# Flag list - for your later edit", ""]
+    lines.append("This draft was built from public regulations "
                  "only, and it is a Discussion Draft by design. Work through "
                  "this list in your own document system; the draft is not "
                  "final until every item below is resolved.")
@@ -409,7 +409,7 @@ def build_flag_list(session_dir, draft_text, inv, check, removed):
         lines.append(f"- Procedure: {intake.get('topic_title', '?')}")
         lines.append(f"- Document title: {intake.get('title', '?')}")
     else:
-        lines.append("- (No Genesis intake record in this session.)")
+        lines.append("- (No intake record in this session.)")
     lines.append("")
     lines.append("## Coverage - what this packet does and does not cover")
     covers = intake.get("coverage_covers", [])
@@ -498,7 +498,7 @@ def build_flag_list(session_dir, draft_text, inv, check, removed):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Genesis citation check.")
+    ap = argparse.ArgumentParser(description="Citation check.")
     ap.add_argument("--session-dir", required=True)
     ap.add_argument("--draft", default="draft_final.md")
     ap.add_argument("--enforce", action="store_true",
@@ -526,9 +526,9 @@ def main():
     check = check_text(text, inv)
     flags = build_flag_list(session_dir, text, inv, check, removed)
     if args.enforce:
-        if "## Flag list - Genesis" not in text:
+        if "## Flag list" not in text:
             flag_body = flags.split("\n", 1)[1] if "\n" in flags else flags
-            text = (text.rstrip() + "\n\n## Flag list - Genesis "
+            text = (text.rstrip() + "\n\n## Flag list "
                     "(for your later edit)\n\n" + flag_body)
         with open(draft_path, "w", encoding="utf-8") as f:
             f.write(text)

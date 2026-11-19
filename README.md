@@ -4,8 +4,8 @@ Multi-agent procedure orchestration, from guidance to a solid first draft of an 
 
 The app opens with one question: **Where do the rules for this SOP come from?**
 
-- **A specific manual, method, or document — equipment, products, site processes, or any guideline you want to supply** — the drafting mode. Give it a purpose, a scope, and those sources, and it drafts an SOP or a test method through a full loop: drafting, human-factors review, drafting, cold-read audit, drafting, cold read, final draft. Python owns what must be true; the LLM owns what should feel human. Don't have the document yet? Get the manual, protocol, or governing reference first. This machine drafts only from sources you supply — it won't search for equipment or product documents, and it won't invent technical steps.
-- **Public regulations alone — core quality-system SOPs only (Document Control, Change Control, CAPA, Training). The machine fetches the regulations for you** — **Genesis mode**, for building a document system from nothing — see below.
+- **A specific manual, method, or document — equipment, products, site processes, or any guideline you want to supply** — **From your documents**. Give it a purpose, a scope, and those sources, and it drafts an SOP or a test method through a full loop: drafting, human-factors review, drafting, cold-read audit, drafting, cold read, final draft. Python owns what must be true; the LLM owns what should feel human. Don't have the document yet? Get the manual, protocol, or governing reference first. This machine drafts only from sources you supply — it won't search for equipment or product documents, and it won't invent technical steps.
+- **Public regulations alone — core quality-system SOPs only (Document Control, Change Control, CAPA, Training). The machine fetches the regulations for you** — **From public regulations**, for building a document system from nothing — see below.
 
 ## How it works
 
@@ -18,21 +18,21 @@ The app opens with one question: **Where do the rules for this SOP come from?**
 7. **Human in the loop** — gaps that need an author answer pause for the human. "I don't know" is a valid answer; that item stays a flagged gap and the run continues. A run may end as a Discussion Draft with markers visible. A formal clean copy needs zero markers.
 The loop is: drafting, HFE, drafting, cold read, drafting, cold read, final draft. A run takes minutes and costs cents — the Python does the bulk of the work for free, and each model call is one narrow judgment on a small prompt.
 
-## Genesis mode — a document system from nothing
+## From public regulations — a document system from nothing
 
-The drafting mode above starts from your sources: guidance, manuals, an existing system to draft against. Genesis mode starts one step earlier, where there are no sources yet — a new company, a new site, a quality system that doesn't exist.
+**From your documents** — you supply the sources: guidance, manuals, an existing system to draft against. **From public regulations** — the machine fetches the regulations and builds the standard procedures every company of your type needs. It does not fetch manuals or documents for specific equipment, products, or sites, and it won't invent them.
 
 You don't describe your company — you pick the archetype closest to it: monoclonal antibodies, diagnostics, cell therapy, combination products, and the like. The machine shows the procedure system the regulations require for that archetype — the list drawn from ICH Q10 and the CFRs — and you pick the one procedure you need. It fetches the public regulations and guidance registered for that procedure, builds the packet from them, and runs the same loop: drafting, human-factors review, cold-read audit.
 
-Genesis is currently set up for biotech and life-sciences organizations — the archetypes and the registered procedures are life-sciences ones. Other industries may be added later.
+From public regulations is currently set up for biotech and life-sciences organizations — the archetypes and the registered procedures are life-sciences ones. Other industries may be added later.
 
-The boundary is plain: Genesis builds the standard procedures for your type of company — the quality-system backbone — from public regulation. Every procedure on an archetype's checklist is buildable from the registered source library. It does not build specialized or company-specific procedures, and it never substitutes another procedure's sources for the one you asked for: a request Genesis has no registered sources for stops plainly and points you to the drafting mode. For a procedure specific to your equipment, product, or site, use the drafting mode with the documents that govern it.
+The boundary is plain: the standard procedures for your type of company — the quality-system backbone — are built from public regulation. Every procedure on an archetype's checklist is buildable from the registered source library. It does not build specialized or company-specific procedures, and it never substitutes another procedure's sources for the one you asked for: a request there are no registered sources for stops plainly and points you to From your documents. For a procedure specific to your equipment, product, or site, use From your documents with the documents that govern it.
 
-Two rules are Genesis's own. Regulatory citations are checked against the packet by a deterministic source check: a citation that does not trace to a fetched source is removed, never flagged and kept. And references to your own documents — document numbers, form numbers, other SOPs — are placeholders by design, flagged in the draft for your later edit.
+Two rules are specific to building from public regulations. Regulatory citations are checked against the packet by a deterministic source check: a citation that does not trace to a fetched source is removed, never flagged and kept. And references to your own documents — document numbers, form numbers, other SOPs — are placeholders by design, flagged in the draft for your later edit.
 
 Each registered procedure also declares what its sources genuinely cover. If a selection runs past the packet — an EU market on sources with no EU-specific instruments, a combination product on a packet with no device rules — the run still proceeds, but the deficit is flagged in the user interface and in the flag list that travels with the draft, naming what is not covered.
 
-What the regulations leave open is never filled in. Approval authorities, review periods, systems of record — those come back as flagged gaps and a decision list that travels with the draft. A Genesis run ends as a Discussion Draft by design: structure from the regulations; practice from you.
+What the regulations leave open is never filled in. Approval authorities, review periods, systems of record — those come back as flagged gaps and a decision list that travels with the draft. A run built from public regulations ends as a Discussion Draft by design: structure from the regulations; practice from you.
 
 ## The design principle
 
@@ -42,7 +42,7 @@ What the regulations leave open is never filled in. Approval authorities, review
 - Agents draft and format. They do not decide root cause, disposition, or acceptance criteria.
 - Zero inference: leave a placeholder and flag what is missing; never invent a value, a step, or a criterion.
 - Facts trace to a user-provided source. If a reviewer could not explain the output to an auditor without the agent, the scope is too wide.
-- In Genesis mode, facts trace to the public regulation and guidance text the machine fetched — and the fetch record, with each source's read status, travels with the run.
+- Building from public regulations, facts trace to the public regulation and guidance text the machine fetched — and the fetch record, with each source's read status, travels with the run.
 
 Skills are the testable core; agent instructions stay thin (role, boundaries, which skill when). `app.py` is the orchestrator; the pipeline stages live under `skills/` and `agents/`.
 
@@ -72,8 +72,8 @@ The pipeline also runs headlessly from the scripts — that is how it was built 
 app.py                  Streamlit front end (pipeline view, human gates, download)
 examples/               the built-in example source (US EPA Method 150.1 text, public domain) the example picker loads
 genesis/
-  registry.py           the Genesis registry: archetypes, markets, functions, the procedure checklist, and the topic-to-public-source map (data, no model)
-  citation_check.py     deterministic citation verification and enforcement for Genesis drafts (Python only, no LLM)
+  registry.py           the registry for building from public regulations: archetypes, markets, functions, the procedure checklist, and the topic-to-public-source map (data, no model)
+  citation_check.py     deterministic citation verification and enforcement for drafts built from public regulations (Python only, no LLM)
 requirements.txt        streamlit + pypdf
 .streamlit/
   secrets.toml.example  template for Streamlit Secrets (key + prompts, no real values)

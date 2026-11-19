@@ -100,7 +100,7 @@ ARCHETYPES = [
     {
         "id": "device",
         "label": "Medical device",
-        "reg_stack": "21 CFR Part 820; EU MDR; ISO 13485 (structure only - the standard itself is not a Genesis source)",
+        "reg_stack": "21 CFR Part 820; EU MDR; ISO 13485 (structure only - the standard itself is not a source here)",
         "additions": ["Design Controls and Design Transfer",
                       "Device History Records", "UDI and Labeling Control"],
     },
@@ -2068,7 +2068,7 @@ TOPICS = [
             ],
             "always": [
                 "ISO 13485 and the EU MDR and IVDR texts are not "
-                "Genesis sources - ISO standards are paywalled and no "
+                "sources here - ISO standards are paywalled and no "
                 "verified public text of the regulations is in the "
                 "library. Design-control coverage rests on the Part 820 "
                 "and Part 4 text.",
