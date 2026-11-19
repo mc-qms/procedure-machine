@@ -4,8 +4,8 @@ Multi-agent procedure orchestration, from guidance to a solid first draft of an 
 
 The app opens with one question: **Where do the rules for this SOP come from?**
 
-- **A specific manual, method, or document — equipment, products, site processes, or any guideline you want to supply** — **From your documents**. Give it a purpose, a scope, and those sources, and it drafts an SOP or a test method through a full loop: drafting, human-factors review, drafting, cold-read audit, drafting, cold read, final draft. Python owns what must be true; the LLM owns what should feel human. Don't have the document yet? Get the manual, protocol, or governing reference first. This machine drafts only from sources you supply — it won't search for equipment or product documents, and it won't invent technical steps.
-- **Public regulations alone — core quality-system SOPs only (Document Control, Change Control, CAPA, Training). The machine fetches the regulations for you** — **From public regulations**, for building a document system from nothing — see below.
+- **Mode 1 — A specific manual, method, or document — equipment, products, site processes, or any guideline you want to supply** — **From your documents**. Give it a purpose, a scope, and those sources, and it drafts an SOP or a test method through a full loop: drafting, human-factors review, drafting, cold-read audit, drafting, cold read, final draft. Python owns what must be true; the LLM owns what should feel human. Don't have the document yet? Get the manual, protocol, or governing reference first. This machine drafts only from sources you supply — it won't search for equipment or product documents, and it won't invent technical steps.
+- **Mode 2 — Public regulations alone — core quality-system SOPs only (Document Control, Change Control, CAPA, Training). The machine fetches the regulations for you** — **From public regulations**, for building a document system from nothing — see below.
 
 ## How it works
 
@@ -20,7 +20,7 @@ The loop is: drafting, HFE, drafting, cold read, drafting, cold read, final draf
 
 ## From public regulations — a document system from nothing
 
-**From your documents** — you supply the sources: guidance, manuals, an existing system to draft against. **From public regulations** — the machine fetches the regulations and builds the standard procedures every company of your type needs. It does not fetch manuals or documents for specific equipment, products, or sites, and it won't invent them.
+**From your documents** — you supply the sources: guidance, manuals, an existing system to draft against. **From public regulations** — the machine fetches the regulations and builds the standard procedures every company of your type needs.
 
 You don't describe your company — you pick the archetype closest to it: monoclonal antibodies, diagnostics, cell therapy, combination products, and the like. The machine shows the procedure system the regulations require for that archetype — the list drawn from ICH Q10 and the CFRs — and you pick the one procedure you need. It fetches the public regulations and guidance registered for that procedure, builds the packet from them, and runs the same loop: drafting, human-factors review, cold-read audit.
 

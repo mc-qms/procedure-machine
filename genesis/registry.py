@@ -134,6 +134,7 @@ FUNCTIONS = [
 # as enablers) and the EU GMP chapter structure.
 CORE_PROCEDURES = [
     "Document Control",
+    "Good Documentation Practices",
     "Change Control",
     "Deviation and Nonconformance Management",
     "Corrective and Preventive Action (CAPA)",
@@ -148,7 +149,7 @@ CORE_PROCEDURES = [
     "Cleaning Validation",
     "Analytical Procedure Validation (Test Method Validation)",
     "Computer System Validation and Data Integrity",
-    "Proper Use of AI in a Regulated Environment",
+    "AI Use",
     "Calibration and Preventive Maintenance",
     "Environmental Monitoring",
     "Stability Testing",
@@ -468,6 +469,84 @@ TOPICS = [
         ],
         "source_ids": ["eu-gmp-ch4", "eu-gmp-ch1", "cfr-part-211",
                        "cfr-part-820", "ich-q10"],
+    },
+    {
+        "id": "good-documentation-practices",
+        "title": "Good documentation practices",
+        "procedure_name": "Good Documentation Practices",
+        "sop_title": "Good Documentation Practices",
+        "purpose": (
+            "Establish the requirements for creating, completing, "
+            "correcting, and retaining GMP records and documents so "
+            "that records are attributable, legible, contemporaneous, "
+            "original, and accurate."
+        ),
+        "principles": [
+            "Records are attributable, legible, contemporaneous, "
+            "original, and accurate, and remain complete, consistent, "
+            "enduring, and available over their retention life "
+            "(ALCOA+).",
+            "An error in a record is corrected by a single "
+            "line-through that leaves the original entry legible; "
+            "the correction is initialled and dated by the person "
+            "making it, and the reason is recorded where it is not "
+            "obvious.",
+            "No entry is obliterated: correction fluid, overwriting, "
+            "and removal of pages or entries are prohibited.",
+            "Records are made at the time the activity is performed, "
+            "not reconstructed afterwards.",
+            "A signature or initial on a record carries a defined "
+            "meaning - performed, checked, or approved - and the "
+            "signer is accountable for that meaning.",
+        ],
+        "roles": [
+            "Record Author", "Record Reviewer", "Quality Assurance",
+        ],
+        "coverage": {
+            "covers": [
+                "EU GMP Chapter 4 (documentation): the good "
+                "documentation practice requirements for generating, "
+                "completing, and retaining records and documents, "
+                "and ICH Q10.",
+                "United States requirements: the 21 CFR Part 211 "
+                "records provisions (production, control, and "
+                "laboratory records, and retention under 211.180) "
+                "and 21 CFR Part 11 for electronic records and "
+                "signatures.",
+            ],
+            "always": [
+                "FDA's 2018 data integrity guidance (Data Integrity "
+                "and Compliance With Drug CGMP: Questions and "
+                "Answers) is not in this packet; US "
+                "documentation-practice coverage rests on the Part "
+                "211 records provisions and Part 11.",
+            ],
+        },
+        "scope_in": (
+            "Applies to the creation, completion, correction, "
+            "review, and retention of GMP records and documents, on "
+            "paper and in electronic systems, at a {archetype} "
+            "organization marketing products in {market}, in the "
+            "following functions: {functions}."
+        ),
+        "scope_out": (
+            "Does not cover the approval and version control of "
+            "documents themselves, which follows the document "
+            "control procedure, or the content required in a "
+            "specific record, which is set in the procedure that "
+            "creates it."
+        ),
+        "intended_user": (
+            "Personnel who create, complete, review, or approve GMP "
+            "records, and the quality unit"
+        ),
+        "keywords": [
+            "good documentation practices", "good documentation practice",
+            "documentation practices", "documentation practice",
+            "record keeping", "alcoa",
+        ],
+        "source_ids": ["eu-gmp-ch4", "cfr-part-211", "cfr-part-11",
+                       "ich-q10"],
     },
     {
         "id": "change-control",
@@ -1191,7 +1270,7 @@ TOPICS = [
     {
         "id": "ai-use",
         "title": "Proper use of AI in a regulated environment",
-        "procedure_name": "Proper Use of AI in a Regulated Environment",
+        "procedure_name": "AI Use",
         "sop_title": "Proper Use of Artificial Intelligence in a Regulated Environment",
         "purpose": (
             "Establish the requirements for the selection, assessment, "

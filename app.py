@@ -1399,7 +1399,7 @@ except Exception:  # a broken registry must not take the app down
 
 GENESIS_INTRO = """**From public regulations — a document system from nothing.**
 
-**From your documents** — you supply the sources: guidance, manuals, an existing system to draft against. **From public regulations** — the machine fetches the regulations and builds the standard procedures every company of your type needs. It does not fetch manuals or documents for specific equipment, products, or sites, and it won't invent them.
+**From your documents** — you supply the sources: guidance, manuals, an existing system to draft against. **From public regulations** — the machine fetches the regulations and builds the standard procedures every company of your type needs.
 
 You don't describe your company — you pick the archetype closest to it: monoclonal antibodies, diagnostics, cell therapy, combination products, and the like. The machine shows the procedure system the regulations require for that archetype — the list drawn from ICH Q10 and the CFRs — and you pick the one procedure you need. It fetches the public regulations and guidance for that procedure, drafts the SOP from them, checks every regulatory citation against what it actually fetched, and cold-read audits the result like any other run.
 
@@ -1424,12 +1424,12 @@ A run from public regulations ends as a Discussion Draft by design: structure fr
 MODE_ENTRY = {
     "question": "Where do the rules for this SOP come from?",
     "established_label": (
-        "A specific manual, method, or document — equipment, "
-        "products, site processes, or any guideline you want "
-        "to supply."),
+        "Mode 1 — A specific manual, method, or document — "
+        "equipment, products, site processes, or any guideline "
+        "you want to supply."),
     "genesis_label": (
-        "Public regulations alone — core quality-system SOPs "
-        "only (Document Control, Change Control, CAPA, "
+        "Mode 2 — Public regulations alone — core quality-system "
+        "SOPs only (Document Control, Change Control, CAPA, "
         "Training). The machine fetches the regulations for "
         "you."),
     "established_no_document_info": (
@@ -1786,10 +1786,18 @@ def _genesis_section():
                     "does not build specialized or company-specific "
                     "procedures, and it never substitutes another "
                     "procedure's sources for the one you asked for.")
-                st.write("The procedures that can be built from "
-                         "public regulations for this archetype:")
-                for _p in _proc_options:
-                    st.write(f"- {_p['name']}")
+                st.write(
+                    "If you have — or can get — the document that "
+                    "governs this procedure, Mode 1 can draft it "
+                    "from that document instead. If you don't have "
+                    "the document, get it first: this machine won't "
+                    "fetch it and won't invent it.")
+                with st.expander(
+                        "The procedures that can be built from public "
+                        f"regulations for this archetype "
+                        f"({len(_proc_options)})"):
+                    for _p in _proc_options:
+                        st.write(f"- {_p['name']}")
                 st.write("If the rules for the procedure come from "
                          "a specific manual, method, or document, "
                          "choose **A specific manual, method, or "
@@ -2604,51 +2612,74 @@ def main():
              "produced. No model thoughts, no live drafting, no raw "
              "instructions are shown here.")
     session_dir = os.path.join(SESSIONS, st.session_state.session_id)
-    for _num, (_key, _label, _role, _desc) in enumerate(STAGES, 1):
-        detail = ""
-        if _key == "fetch-link" and os.path.exists(os.path.join(session_dir, "fetch_record.json")):
-            try:
-                _recs = json.load(open(os.path.join(session_dir, "fetch_record.json")))
-                detail = " | ".join(
-                    f"{r.get('saved_as', r.get('url', '?')).split('/')[-1]}: "
-                    f"{r.get('fetch_status', '?')}, {r.get('bytes', '?')} bytes, "
-                    f"{r.get('content_type', '?')}" for r in _recs)
-            except (OSError, json.JSONDecodeError):
-                detail = ""
-        if _key == "source-intake" and os.path.exists(os.path.join(session_dir, "docsrc_cache.json")):
-            try:
-                _cache = json.load(open(os.path.join(session_dir, "docsrc_cache.json")))
-                detail = " | ".join(
-                    f"{n}: {r.get('status', '?')}, {r.get('pages', '?')} pages, "
-                    f"{r.get('chars', '?')} source chars, {len(r.get('anchors', []))} sections"
-                    for n, r in _cache.get("files", {}).items()
-                    if isinstance(r, dict))
-            except (OSError, json.JSONDecodeError):
-                detail = ""
-        if _key == "packet-builder" and os.path.exists(os.path.join(session_dir, "source_packet.json")):
-            p = json.load(open(os.path.join(session_dir, "source_packet.json")))
-            detail = (f"Packet {p.get('packet_id')}: {len(p.get('required_sections', []))} required sections, "
-                      f"{len(p.get('relevant_sections', []))} relevant, {len(p.get('gaps', []))} gaps, "
-                      f"~{p.get('packet_tokens_estimate', '?')} tokens.")
-            _cp = os.path.join(session_dir, "packet_check.json")
-            if os.path.exists(_cp):
+    # Compact status line: the stage list below is collapsed,
+    # but it is also the live progress display during a run -
+    # this line keeps the current step visible without opening it.
+    _statuses = [st.session_state.stage_status[_k]
+                 for _k, _, _, _ in STAGES]
+    _active = next((i for i, s in enumerate(_statuses)
+                    if s in ("running", "needs-you")), None)
+    _failed_at = next((i for i, s in enumerate(_statuses)
+                       if s == "failed"), None)
+    _done_n = sum(1 for s in _statuses if s == "done")
+    if _active is not None:
+        st.write(f"**Status:** step {_active + 1} of {len(STAGES)} — "
+                 f"{STAGES[_active][1]} ({_statuses[_active]}).")
+    elif _failed_at is not None:
+        st.write(f"**Status:** stopped at step {_failed_at + 1} of "
+                 f"{len(STAGES)} — {STAGES[_failed_at][1]} (failed).")
+    elif _done_n == len(STAGES):
+        st.write(f"**Status:** finished — all {len(STAGES)} steps done.")
+    elif _done_n:
+        st.write(f"**Status:** {_done_n} of {len(STAGES)} steps done.")
+    else:
+        st.write("**Status:** not started.")
+    with st.expander(f"How a run works — the {len(STAGES)} steps"):
+        for _num, (_key, _label, _role, _desc) in enumerate(STAGES, 1):
+            detail = ""
+            if _key == "fetch-link" and os.path.exists(os.path.join(session_dir, "fetch_record.json")):
                 try:
-                    _c = json.load(open(_cp))
-                    detail += (f" Packet check: {len(_c.get('fetched', []))} fetched, "
-                               f"{len(_c.get('covered', []))} already covered, "
-                               f"{len(_c.get('still_missing', []))} still missing.")
+                    _recs = json.load(open(os.path.join(session_dir, "fetch_record.json")))
+                    detail = " | ".join(
+                        f"{r.get('saved_as', r.get('url', '?')).split('/')[-1]}: "
+                        f"{r.get('fetch_status', '?')}, {r.get('bytes', '?')} bytes, "
+                        f"{r.get('content_type', '?')}" for r in _recs)
                 except (OSError, json.JSONDecodeError):
-                    pass
-            _dups = p.get("duplicate_sources", [])
-            if _dups:
-                detail += (f" {len(_dups)} duplicate source(s) ignored "
-                           f"(same document twice): " +
-                           ", ".join(d.get("name", "?") for d in _dups) + ".")
-        if _key in ("human-input-1", "human-input-2", "drafting-1", "drafting-2",
-                    "drafting-3", "drafting-4", "drafting-5", "drafting-6",
-                    "cold-read-1", "cold-read-2"):
-            detail = st.session_state.get("loop_detail", {}).get(_key, "")
-        stage_box(_num, _label, _role, _desc, st.session_state.stage_status[_key], detail)
+                    detail = ""
+            if _key == "source-intake" and os.path.exists(os.path.join(session_dir, "docsrc_cache.json")):
+                try:
+                    _cache = json.load(open(os.path.join(session_dir, "docsrc_cache.json")))
+                    detail = " | ".join(
+                        f"{n}: {r.get('status', '?')}, {r.get('pages', '?')} pages, "
+                        f"{r.get('chars', '?')} source chars, {len(r.get('anchors', []))} sections"
+                        for n, r in _cache.get("files", {}).items()
+                        if isinstance(r, dict))
+                except (OSError, json.JSONDecodeError):
+                    detail = ""
+            if _key == "packet-builder" and os.path.exists(os.path.join(session_dir, "source_packet.json")):
+                p = json.load(open(os.path.join(session_dir, "source_packet.json")))
+                detail = (f"Packet {p.get('packet_id')}: {len(p.get('required_sections', []))} required sections, "
+                          f"{len(p.get('relevant_sections', []))} relevant, {len(p.get('gaps', []))} gaps, "
+                          f"~{p.get('packet_tokens_estimate', '?')} tokens.")
+                _cp = os.path.join(session_dir, "packet_check.json")
+                if os.path.exists(_cp):
+                    try:
+                        _c = json.load(open(_cp))
+                        detail += (f" Packet check: {len(_c.get('fetched', []))} fetched, "
+                                   f"{len(_c.get('covered', []))} already covered, "
+                                   f"{len(_c.get('still_missing', []))} still missing.")
+                    except (OSError, json.JSONDecodeError):
+                        pass
+                _dups = p.get("duplicate_sources", [])
+                if _dups:
+                    detail += (f" {len(_dups)} duplicate source(s) ignored "
+                               f"(same document twice): " +
+                               ", ".join(d.get("name", "?") for d in _dups) + ".")
+            if _key in ("human-input-1", "human-input-2", "drafting-1", "drafting-2",
+                        "drafting-3", "drafting-4", "drafting-5", "drafting-6",
+                        "cold-read-1", "cold-read-2"):
+                detail = st.session_state.get("loop_detail", {}).get(_key, "")
+            stage_box(_num, _label, _role, _desc, st.session_state.stage_status[_key], detail)
 
     # --- Draft viewer
     # Presentation (Nov 14, 2026): the drafts are the product —
