@@ -31,6 +31,7 @@ import argparse
 import datetime
 import hashlib
 import html
+import http.client
 import ipaddress
 import json
 import os
@@ -221,9 +222,12 @@ def main(argv=None):
 
     host = check_public_host(url)
 
-    opener = urllib.request.build_opener(_RedirectLimiter(MAX_REDIRECTS))
-    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    try:
+    def _attempt_download():
+        """One download attempt. Returns (status, content_type,
+        final_url, raw). Raises whatever the single-attempt code
+        raised; the caller decides what earns a second try."""
+        opener = urllib.request.build_opener(_RedirectLimiter(MAX_REDIRECTS))
+        req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
         with opener.open(req, timeout=TIMEOUT) as resp:
             status = resp.status
             content_type = resp.headers.get("Content-Type", "")
@@ -240,19 +244,64 @@ def main(argv=None):
                     die_blocked(url, f"file exceeds 25 MB cap ({total} bytes read)")
                 chunks.append(chunk)
             raw = b"".join(chunks)
-    except urllib.error.HTTPError as e:
-        reason = {
-            401: "login required (401)",
-            403: "blocked / login required (403)",
-            404: "not found (404)",
-        }.get(e.code, f"HTTP {e.code}")
-        die_blocked(url, reason)
-    except urllib.error.URLError as e:
-        die_blocked(url, f"fetch failed: {e.reason}")
-    except (TimeoutError, socket.timeout):
-        die_blocked(url, "timeout after 30 seconds")
-    except Exception as e:  # noqa: BLE001 - report, do not guess
-        die_blocked(url, f"fetch failed: {e}")
+            # A chunked read does not raise when the connection
+            # drops mid-body - it just stops returning data - so
+            # check the body against the declared length. A short
+            # body is the Q10 flake itself: a truncated file saved
+            # as if complete, then graded UNREADABLE downstream.
+            declared = resp.headers.get("Content-Length")
+            if declared is not None:
+                try:
+                    expected = int(declared)
+                except ValueError:
+                    expected = None
+                if expected is not None and len(raw) < expected:
+                    raise http.client.IncompleteRead(raw, expected - len(raw))
+            return status, content_type, final_url, raw
+
+    # One retry (Nov 19, 2026): a single transient failure used to
+    # hand docsrc an errored or empty download, and the source was
+    # graded UNREADABLE for a document that plainly exists - an
+    # ICH Q10 fetch flaked exactly this way. Two attempts for
+    # transient failures (connection errors, timeouts, HTTP 5xx,
+    # an empty body, a body shorter than the server declared),
+    # then the error stands - the same rule the
+    # packet-builder lookup has had since Nov 13. Definitive
+    # answers (401 / 403 / 404, other 4xx) are not retried: the
+    # server has answered, and asking again changes nothing.
+    status = None
+    content_type = ""
+    final_url = url
+    raw = b""
+    for _attempt in (1, 2):
+        try:
+            status, content_type, final_url, raw = _attempt_download()
+        except urllib.error.HTTPError as e:
+            if 500 <= e.code < 600 and _attempt == 1:
+                continue
+            reason = {
+                401: "login required (401)",
+                403: "blocked / login required (403)",
+                404: "not found (404)",
+            }.get(e.code, f"HTTP {e.code}")
+            die_blocked(url, reason)
+        except urllib.error.URLError as e:
+            if _attempt == 1:
+                continue
+            die_blocked(url, f"fetch failed: {e.reason}")
+        except (TimeoutError, socket.timeout):
+            if _attempt == 1:
+                continue
+            die_blocked(url, "timeout after 30 seconds")
+        except Exception as e:  # noqa: BLE001 - report, do not guess
+            if _attempt == 1:
+                continue
+            die_blocked(url, f"fetch failed: {e}")
+        if raw:
+            break
+        # Empty body: the response flaked or was truncated. One
+        # more attempt; if it comes back empty again, fall through
+        # and let the existing handling grade what arrived.
 
     if status >= 400:
         die_blocked(url, f"HTTP {status}")
