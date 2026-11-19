@@ -1730,7 +1730,8 @@ def _genesis_section():
              "one procedure at a time; the checklist shows the whole system "
              "for reference.")
     arch = reg.archetype_by_label(st.selectbox(
-        "Organization archetype", [a["label"] for a in reg.ARCHETYPES],
+        "Organization archetype",
+        sorted(a["label"] for a in reg.ARCHETYPES),
         key="genesis_archetype",
         help="The kind of organization the document system is for. The archetype selects the regulation stack and the procedure checklist - it is a category, not a description of your company."))
     market = reg.market_by_label(st.radio(
@@ -1754,7 +1755,7 @@ def _genesis_section():
     _proc_options = [p for p in reg.procedures_for(arch["id"]) if p["topic_id"]]
     _labels = {p["name"]: p["topic_id"] for p in _proc_options}
     choice = st.selectbox("The one procedure to build now",
-                          list(_labels) + [_OTHER],
+                          sorted(_labels) + [_OTHER],
                           key="genesis_topic_choice")
     topic = None
     coverage_flags = []
