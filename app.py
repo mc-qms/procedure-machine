@@ -1381,7 +1381,7 @@ GENESIS_INTRO = """**From public regulations — a document system from nothing.
 
 You don't describe your company — you pick the archetype closest to it: monoclonal antibodies, diagnostics, cell therapy, combination products, and the like. The machine shows the procedure system the regulations require for that archetype — the list drawn from ICH Q10 and the CFRs — and you pick the one procedure you need. It fetches the public regulations and guidance for that procedure, drafts the SOP from them, checks every regulatory citation against what it actually fetched, and cold-read audits the result like any other run.
 
-From public regulations is currently set up for biotech and life-sciences organizations — the archetypes and the registered procedures are life-sciences ones. Other industries may be added later.
+Built for biotech and life sciences. Another industry gets added when someone who works in it asks — the sources have to be checked by someone who knows that world.
 
 The boundary is plain: the standard procedures for your type of company — the quality-system backbone — are built from public regulation. It does not fetch manuals or documents for specific equipment, products, or sites, and it does not build specialized or company-specific procedures. For a procedure specific to your equipment, product, or site, use From your documents with the documents that govern it — and if you don't have the governing document, neither way of starting can build it: the machine won't fetch it and won't invent it. Get the document first.
 
