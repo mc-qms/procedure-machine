@@ -588,6 +588,28 @@ def _restore_deterministic_fills(draft_text, session_dir):
     fills = _deterministic_fills(session_dir)
     if not fills:
         return draft_text
+    if "Responsibilities" in fills and _is_genesis_session(session_dir):
+        # Genesis: the topic declares the roles its Responsibilities
+        # section is written against, and the drafting prompt hands
+        # them to the model (see _drafting_prompt). Restoring the
+        # intended_user one-liner over the model's role-based
+        # section would replace the roles with a sentence about
+        # functions, so for a Genesis topic with declared roles the
+        # model's section stands - and a marker it left there stays
+        # flagged, as Genesis markers do. Records and References
+        # still restore: their fills are the packet's source list.
+        topic = None
+        if GENESIS_REGISTRY is not None:
+            try:
+                with open(os.path.join(session_dir,
+                                       "genesis_intake.json")) as f:
+                    _intake = json.load(f)
+                topic = GENESIS_REGISTRY.topic_by_id(
+                    _intake.get("topic_id"))
+            except (OSError, json.JSONDecodeError, KeyError):
+                topic = None
+        if topic and topic.get("roles"):
+            fills.pop("Responsibilities")
     lines = draft_text.splitlines()
     for title, fill in fills.items():
         head_re = re.compile(rf"^## \d+(\.\d+)?\. {re.escape(title)}\s*$")
@@ -1381,7 +1403,7 @@ GENESIS_INTRO = """**From public regulations — a document system from nothing.
 
 You don't describe your company — you pick the archetype closest to it: monoclonal antibodies, diagnostics, cell therapy, combination products, and the like. The machine shows the procedure system the regulations require for that archetype — the list drawn from ICH Q10 and the CFRs — and you pick the one procedure you need. It fetches the public regulations and guidance for that procedure, drafts the SOP from them, checks every regulatory citation against what it actually fetched, and cold-read audits the result like any other run.
 
-Built for biotech and life sciences. Another industry gets added when someone who works in it asks — the sources have to be checked by someone who knows that world.
+Built for biotech and life sciences. Other industries are added on request, with sources checked by someone who knows that world.
 
 The boundary is plain: the standard procedures for your type of company — the quality-system backbone — are built from public regulation. It does not fetch manuals or documents for specific equipment, products, or sites, and it does not build specialized or company-specific procedures. For a procedure specific to your equipment, product, or site, use From your documents with the documents that govern it — and if you don't have the governing document, neither way of starting can build it: the machine won't fetch it and won't invent it. Get the document first.
 
@@ -1466,6 +1488,21 @@ def _drafting_prompt(session_dir):
                 "following as obligations in its body (Responsibilities "
                 "or Procedure), never inside the Purpose section:\n" +
                 "\n".join(f"- {p}" for p in topic["principles"]))
+        # A topic declares the roles its Responsibilities section
+        # is written against - actors in the procedure, not the
+        # departments it touches. The functions selected at intake
+        # set the Scope's applicability only; they are not a list
+        # of responsibility holders.
+        if topic and topic.get("roles"):
+            prompt += (
+                "\n\nGENESIS ROLES - write the Responsibilities "
+                "section against these procedure roles:\n" +
+                "\n".join(f"- {r}" for r in topic["roles"]) +
+                "\nAssign responsibilities to these roles. The "
+                "functions the procedure applies to, recorded at "
+                "intake, inform the Scope's applicability only - do "
+                "not write a responsibility bullet for each function "
+                "or department.")
         return prompt
     return base
 
@@ -1708,8 +1745,8 @@ def _genesis_section():
         _lines = []
         for item in reg.procedures_for(arch["id"]):
             _lines.append("- " + item["name"] +
-                          (" — can be built now"
-                           if item["topic_id"] else ""))
+                          ("" if item["topic_id"]
+                           else " — not yet buildable"))
         st.text("\n".join(_lines))
     _OTHER = "Something else — describe it in one line"
     # Topic selection is driven by the archetype's own checklist:

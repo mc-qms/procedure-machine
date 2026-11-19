@@ -41,7 +41,10 @@ Everything in this file is data a human curated:
   cover is never allowed to look covered (Don't Halt, Flag Gaps).
 
 Adding a topic is adding an entry: title, purpose and scope text,
-keywords for the describe-it fallback, and the source id list.
+the roles the procedure's responsibilities are written against
+(actors in the process, not departments — the functions a user
+selects set the scope's applicability only), keywords for the
+describe-it fallback, and the source id list.
 The purpose and scope texts carry {archetype}, {market}, and
 {functions} placeholders, filled deterministically from the
 user's selections when the packet is built.
@@ -431,6 +434,10 @@ TOPICS = [
             "approved, issued, revised, and retired, so that only current, "
             "approved documents are in use."
         ),
+        "roles": [
+            "Document Author", "Document Owner", "Approvers",
+            "Quality Assurance",
+        ],
         "coverage": {
             "covers": [
                 "EU GMP Chapter 4 (documentation) and Chapter 1, and ICH Q10: "
@@ -480,6 +487,9 @@ TOPICS = [
             "Changes to established conditions in a marketing authorization "
             "are distinguished from changes managed inside the quality "
             "system, and each follows its own approval and reporting route.",
+        ],
+        "roles": [
+            "Requester", "Change Owner", "Quality Assurance", "Approvers",
         ],
         "coverage": {
             "covers": [
@@ -534,6 +544,9 @@ TOPICS = [
             "impact on product quality and patient safety, and the "
             "disposition of affected product is a quality-unit decision.",
         ],
+        "roles": [
+            "Initiator", "Investigator", "Quality Assurance",
+        ],
         "coverage": {
             "covers": [
                 "EU GMP Chapter 1 deviation and quality-defect handling, and "
@@ -580,6 +593,9 @@ TOPICS = [
             "that could occur. Fixing the instance is neither.",
             "Every CAPA closes with an effectiveness check defined when the "
             "action is planned, not invented when the action is done.",
+        ],
+        "roles": [
+            "Initiator", "CAPA Owner", "Quality Assurance",
         ],
         "coverage": {
             "covers": [
@@ -628,6 +644,9 @@ TOPICS = [
             "A document revision triggers an assessment of who must be "
             "retrained on what changed, proportionate to the change.",
         ],
+        "roles": [
+            "Trainee", "Trainer", "Supervisor",
+        ],
         "coverage": {
             "covers": [
                 "EU GMP Chapter 2 (personnel, training, and hygiene) and "
@@ -666,6 +685,9 @@ TOPICS = [
             "procedures and with GMP is audited internally, and how "
             "findings are recorded, answered, and closed."
         ),
+        "roles": [
+            "Lead Auditor", "Auditor", "Auditee", "Quality Assurance",
+        ],
         "coverage": {
             "covers": [
                 "EU GMP Chapter 9 (self inspection) and Chapter 1, and ICH "
@@ -709,6 +731,10 @@ TOPICS = [
             "the quality system at planned intervals and directs its "
             "improvement."
         ),
+        "roles": [
+            "Senior Management", "Management Representative",
+            "Quality Assurance", "Process Owners",
+        ],
         "coverage": {
             "covers": [
                 "ICH Q10 management review and EU GMP Chapter 1, which "
@@ -753,6 +779,10 @@ TOPICS = [
             "Risk decisions are based on the available science and data, "
             "and the residual risk after control is stated, not implied.",
         ],
+        "roles": [
+            "Risk Assessment Lead", "Subject Matter Expert", "Risk Owner",
+            "Quality Assurance",
+        ],
         "coverage": {
             "covers": [
                 "ICH Q9(R1) quality risk management and ICH Q10's risk "
@@ -796,6 +826,9 @@ TOPICS = [
             "The depth of qualification and audit is proportionate to the "
             "risk the material or service poses to product quality.",
         ],
+        "roles": [
+            "Purchasing", "Supplier Quality Auditor", "Quality Assurance",
+        ],
         "coverage": {
             "covers": [
                 "EU GMP Chapter 7 (outsourced activities) and Chapter 5 "
@@ -836,6 +869,10 @@ TOPICS = [
             "reviewed, investigated, and answered, and how they are "
             "assessed for escalation to recall or regulatory reporting."
         ),
+        "roles": [
+            "Complaint Intake", "Investigator", "Quality Assurance",
+            "Regulatory Affairs",
+        ],
         "coverage": {
             "covers": [
                 "EU GMP Chapter 8 (complaints and quality defects) and ICH "
@@ -880,6 +917,10 @@ TOPICS = [
             "without commercial approval.",
             "Recall effectiveness is proven by reconciliation: quantities "
             "distributed, returned, and accounted for must agree.",
+        ],
+        "roles": [
+            "Recall Coordinator", "Quality Assurance", "Regulatory Affairs",
+            "Executive Management",
         ],
         "coverage": {
             "covers": [
@@ -927,6 +968,9 @@ TOPICS = [
             "The number of qualification batches and the sampling within "
             "them are justified by the process's variability and risk, "
             "not by convention alone.",
+        ],
+        "roles": [
+            "Validation Engineer", "Process Owner", "Quality Assurance",
         ],
         "coverage": {
             "covers": [
@@ -983,6 +1027,10 @@ TOPICS = [
             "The worst case is chosen and defended: the hardest-to-clean "
             "product, location, and condition stand for the group.",
         ],
+        "roles": [
+            "Validation Engineer", "Manufacturing Operator",
+            "Laboratory Analyst", "Quality Assurance",
+        ],
         "coverage": {
             "covers": [
                 "EU GMP Annex 15 (cleaning validation) and Chapters 3 and "
@@ -1025,6 +1073,10 @@ TOPICS = [
             "criteria applied to demonstrate each method suitable for "
             "its intended use."
         ),
+        "roles": [
+            "Analyst", "Study Director / Protocol Owner",
+            "Quality Assurance",
+        ],
         "coverage": {
             "covers": [
                 "ICH Q2(R2) and ICH Q14, which are adopted in the US, "
@@ -1097,6 +1149,9 @@ TOPICS = [
             "on product quality and data integrity, and is based on the "
             "system's intended use, not on its size.",
         ],
+        "roles": [
+            "System Owner", "System Administrator", "Quality Assurance",
+        ],
         "coverage": {
             "covers": [
                 "EU GMP Annex 11 (computerised systems) and ICH Q10.",
@@ -1154,6 +1209,9 @@ TOPICS = [
             "contributes to.",
             "Every AI-assisted record is traceable to the sources used "
             "to produce it.",
+        ],
+        "roles": [
+            "Requester", "System Owner", "Quality Assurance",
         ],
         "coverage": {
             "covers": [
@@ -1232,6 +1290,10 @@ TOPICS = [
             "maintained, and qualified, so that they remain fit for "
             "their intended use and their status is known at all times."
         ),
+        "roles": [
+            "Calibration Technician", "Maintenance Technician",
+            "Equipment Owner", "Quality Assurance",
+        ],
         "coverage": {
             "covers": [
                 "EU GMP Chapter 3 (premises and equipment) and Annex 15 "
@@ -1278,6 +1340,10 @@ TOPICS = [
             "Monitoring results are trended, not filed: alert and action "
             "excursions are investigated for what they say about the "
             "state of control, including when product impact is none.",
+        ],
+        "roles": [
+            "Microbiologist", "Microbiology Supervisor",
+            "Quality Assurance",
         ],
         "coverage": {
             "covers": [
@@ -1328,6 +1394,9 @@ TOPICS = [
             "and evaluated to support shelf life, retest periods, and "
             "storage conditions for drug substances and products."
         ),
+        "roles": [
+            "Analyst", "Stability Coordinator", "Quality Assurance",
+        ],
         "coverage": {
             "covers": [
                 "ICH Q1A(R2) stability testing (storage conditions, "
@@ -1383,6 +1452,9 @@ TOPICS = [
             "analyst's work is examined before any full-scale "
             "investigation of the batch is opened.",
         ],
+        "roles": [
+            "Analyst", "Laboratory Supervisor", "Quality Assurance",
+        ],
         "coverage": {
             "covers": [
                 "EU GMP Chapter 6 (quality control: OOS handling, "
@@ -1435,6 +1507,10 @@ TOPICS = [
             "test result: unresolved deviations, investigations, and "
             "changes affecting the batch are closed or explicitly "
             "dispositioned before release.",
+        ],
+        "roles": [
+            "Batch Record Reviewer", "Manufacturing Supervisor",
+            "Quality Assurance", "Authorized Person",
         ],
         "coverage": {
             "covers": [
@@ -1503,6 +1579,10 @@ TOPICS = [
             "least annually, so that trends, recurring problems, and the "
             "need for change are identified from the year's data."
         ),
+        "roles": [
+            "Report Author", "Process Owners", "Quality Assurance",
+            "Senior Management",
+        ],
         "coverage": {
             "covers": [
                 "EU GMP Chapter 1 (product quality review) and ICH Q10's "
@@ -1545,6 +1625,10 @@ TOPICS = [
             "Labels are counted, not trusted: issuance, use, and "
             "destruction of printed labeling are reconciled for every "
             "batch, and a discrepancy stops the line.",
+        ],
+        "roles": [
+            "Packaging Operator", "Packaging Supervisor", "Label Reviewer",
+            "Quality Assurance",
         ],
         "coverage": {
             "covers": [
@@ -1600,6 +1684,10 @@ TOPICS = [
             "conditions, so that identity, status, and storage "
             "conditions are maintained through the supply chain."
         ),
+        "roles": [
+            "Warehouse Operator", "Warehouse Supervisor",
+            "Quality Assurance",
+        ],
         "coverage": {
             "covers": [
                 "EU Good Distribution Practice guidelines (2013/C "
@@ -1646,6 +1734,10 @@ TOPICS = [
             "using technical and organizational measures proportionate "
             "to the risk."
         ),
+        "roles": [
+            "Manufacturing Operator", "Area Supervisor",
+            "Quality Assurance",
+        ],
         "coverage": {
             "covers": [
                 "EU GMP Chapters 3 and 5 (premises design and "
@@ -1696,6 +1788,10 @@ TOPICS = [
             "case: routine interventions, maximum personnel, and maximum "
             "duration are in the simulation, not edited out of it.",
         ],
+        "roles": [
+            "Aseptic Operator", "Manufacturing Supervisor",
+            "Microbiologist", "Quality Assurance",
+        ],
         "coverage": {
             "covers": [
                 "EU GMP Annex 1 (manufacture of sterile medicinal "
@@ -1744,6 +1840,10 @@ TOPICS = [
             "characterized, stored, and issued, so that production "
             "always starts from a qualified, traceable cell substrate."
         ),
+        "roles": [
+            "Cell Bank Operator", "Laboratory Supervisor",
+            "Quality Assurance",
+        ],
         "coverage": {
             "covers": [
                 "ICH Q5D (derivation and characterization of cell "
@@ -1790,6 +1890,9 @@ TOPICS = [
             "Viral safety rests on three complementary legs: controlled "
             "starting materials, testing at defined stages, and "
             "validated clearance. No leg substitutes for another.",
+        ],
+        "roles": [
+            "Study Director", "Laboratory Scientist", "Quality Assurance",
         ],
         "coverage": {
             "covers": [
@@ -1840,6 +1943,10 @@ TOPICS = [
             "work area; concurrent handling is designed out, not "
             "managed by care.",
         ],
+        "roles": [
+            "Collection Operator", "Logistics Coordinator",
+            "Quality Assurance",
+        ],
         "coverage": {
             "covers": [
                 "EU GMP Part IV (ATMP guidelines: traceability and chain "
@@ -1879,6 +1986,10 @@ TOPICS = [
             "screened and tested and how donor eligibility is "
             "determined and documented before material is used."
         ),
+        "roles": [
+            "Screening Personnel", "Responsible Physician",
+            "Quality Assurance",
+        ],
         "coverage": {
             "covers": [
                 "United States requirements: 21 CFR Part 1271 Subpart C "
@@ -1934,6 +2045,10 @@ TOPICS = [
             "transferred to manufacturing, with identity and condition "
             "preserved."
         ),
+        "roles": [
+            "Apheresis Operator", "Collection Supervisor",
+            "Quality Assurance",
+        ],
         "coverage": {
             "covers": [
                 "EU GMP Part IV (ATMP guidelines: starting materials, "
@@ -1975,6 +2090,10 @@ TOPICS = [
             "materials or intermediates, so that vector quality is "
             "consistent from batch to batch."
         ),
+        "roles": [
+            "Production Operator", "Manufacturing Supervisor",
+            "Quality Assurance",
+        ],
         "coverage": {
             "covers": [
                 "ICH Q5A(R2) and ICH Q5D (cell substrates and viral "
@@ -2012,6 +2131,10 @@ TOPICS = [
             "characterized, stored, and issued, so that production "
             "always starts from a qualified, traceable seed."
         ),
+        "roles": [
+            "Seed Lot Custodian", "Laboratory Supervisor",
+            "Quality Assurance",
+        ],
         "coverage": {
             "covers": [
                 "ICH Q5D (cell substrates, applied to seed systems) and "
@@ -2057,6 +2180,10 @@ TOPICS = [
             "The design history file is built as the design proceeds: "
             "it is the record of the design, not a reconstruction of "
             "it at transfer.",
+        ],
+        "roles": [
+            "Design Engineer", "Design Owner", "Quality Assurance",
+            "Regulatory Affairs",
         ],
         "coverage": {
             "covers": [
@@ -2106,6 +2233,9 @@ TOPICS = [
             "diagnostic are evaluated and documented across its "
             "lifecycle."
         ),
+        "roles": [
+            "Evaluation Author", "Scientific Reviewer", "Quality Assurance",
+        ],
         "coverage": {
             "covers": [
                 "United States requirements: 21 CFR Part 809 (in vitro "
@@ -2157,6 +2287,10 @@ TOPICS = [
             "with representative users, so that the product can be "
             "used safely and effectively by its intended users."
         ),
+        "roles": [
+            "Human Factors Engineer", "Study Moderator",
+            "Quality Assurance",
+        ],
         "coverage": {
             "covers": [
                 "United States requirements: design validation under 21 "
@@ -2201,6 +2335,9 @@ TOPICS = [
             "of every unit or batch shows it was made to its device "
             "master record."
         ),
+        "roles": [
+            "Production Operator", "Record Reviewer", "Quality Assurance",
+        ],
         "coverage": {
             "covers": [
                 "United States requirements: 21 CFR 820.184 (device "
@@ -2238,6 +2375,10 @@ TOPICS = [
             "controlled, so that every device is identifiable and "
             "traceable throughout distribution."
         ),
+        "roles": [
+            "Labeling Specialist", "Regulatory Affairs",
+            "Quality Assurance",
+        ],
         "coverage": {
             "covers": [
                 "United States requirements: 21 CFR 820.120 (device "

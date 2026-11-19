@@ -24,7 +24,7 @@ The loop is: drafting, HFE, drafting, cold read, drafting, cold read, final draf
 
 You don't describe your company — you pick the archetype closest to it: monoclonal antibodies, diagnostics, cell therapy, combination products, and the like. The machine shows the procedure system the regulations require for that archetype — the list drawn from ICH Q10 and the CFRs — and you pick the one procedure you need. It fetches the public regulations and guidance registered for that procedure, builds the packet from them, and runs the same loop: drafting, human-factors review, cold-read audit.
 
-Built for biotech and life sciences. Another industry gets added when someone who works in it asks — the sources have to be checked by someone who knows that world.
+Built for biotech and life sciences. Other industries are added on request, with sources checked by someone who knows that world.
 
 The boundary is plain: the standard procedures for your type of company — the quality-system backbone — are built from public regulation. Every procedure on an archetype's checklist is buildable from the registered source library. It does not build specialized or company-specific procedures, and it never substitutes another procedure's sources for the one you asked for: a request there are no registered sources for stops plainly and points you to From your documents. For a procedure specific to your equipment, product, or site, use From your documents with the documents that govern it.
 
