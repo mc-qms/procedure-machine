@@ -23,9 +23,16 @@ Everything in this file is data a human curated:
   with the URL the fetch step retrieves it from, the filename it
   is stored under in the session, and the citation instruments it
   puts into the packet (the citation check verifies draft
-  citations against exactly these). USP <1225> is deliberately
-  absent from the method-validation entry: it is paywalled, and
-  Genesis sources are public or they are not sources.
+  citations against exactly these, at the exact revision named).
+  USP <1225> is deliberately absent from the method-validation
+  entry: it is paywalled, and Genesis sources are public or they
+  are not sources.
+- Each topic also declares its COVERAGE: what its packet genuinely
+  backs (stated positively), and the market / archetype selections
+  that run past the packet. The build compares the user's
+  selections against the declaration and flags every deficit —
+  the run proceeds, but a selection the sources do not cover is
+  never allowed to look covered (Don't Halt, Flag Gaps).
 
 Adding a topic is adding an entry: title, purpose and scope text,
 keywords for the describe-it fallback, and the source list. The
@@ -149,11 +156,66 @@ TOPICS = [
         "procedure_name": "Proper Use of AI in a Regulated Environment",
         "sop_title": "Proper Use of Artificial Intelligence in a Regulated Environment",
         "purpose": (
-            "Establish how artificial intelligence tools are selected, assessed, "
-            "approved, used, and monitored in regulated activities, so that AI "
-            "output supports - and never replaces - qualified human review, and "
-            "every AI-assisted record can be traced to the sources it was built from."
+            "Establish the requirements for the selection, assessment, "
+            "approval, use, and monitoring of artificial intelligence "
+            "tools in regulated activities."
         ),
+        # Principles this procedure carries as obligations in its
+        # body (Responsibilities / Procedure). They are not Purpose
+        # text: the drafting prompt hands them to the drafting pass
+        # separately, as obligations to state in the body.
+        "principles": [
+            "AI output supports, and never replaces, qualified human "
+            "review: a qualified person reviews AI-assisted output and "
+            "remains accountable for every record or decision it "
+            "contributes to.",
+            "Every AI-assisted record is traceable to the sources used "
+            "to produce it.",
+        ],
+        "coverage": {
+            "covers": [
+                "United States requirements and guidance: the packet's "
+                "FDA draft guidance and the NIST AI Risk Management "
+                "Framework are US sources, and the ICH guidelines in "
+                "the packet apply in the US.",
+                "ICH-level quality-system and quality-risk requirements "
+                "(ICH Q10, ICH Q9(R1)), which apply in the US, the EU, "
+                "and the other ICH regions.",
+            ],
+            "markets": {
+                "us": None,
+                "eu": (
+                    "EU market selected, but the packet contains no "
+                    "EU-specific AI sources: the EU AI Act, the EMA "
+                    "reflection paper on artificial intelligence, and "
+                    "EU GMP Annex 11 are not in it. EU coverage in this "
+                    "draft rests on the ICH guidelines only."
+                ),
+            },
+            "archetypes": {
+                "combination": (
+                    "Combination product (drug-device) selected, but the "
+                    "packet contains no device or combination-product "
+                    "sources: 21 CFR Part 4 (combination products) and "
+                    "21 CFR Part 820 (device quality system regulation) "
+                    "are not in it. Device-side obligations are not "
+                    "covered."
+                ),
+                "device": (
+                    "Medical device selected, but the packet contains no "
+                    "device quality-system sources: 21 CFR Part 820 and "
+                    "the EU MDR are not in it; its only device-oriented "
+                    "source is the GMLP guiding principles. Device "
+                    "obligations are not covered."
+                ),
+                "ivd": (
+                    "In vitro diagnostics selected, but the packet "
+                    "contains no diagnostics-specific sources: 21 CFR "
+                    "Parts 809 and 820 and the EU IVDR are not in it. "
+                    "Diagnostics obligations are not covered."
+                ),
+            },
+        },
         "scope_in": (
             "Applies to all personnel at a {archetype} organization marketing "
             "products in {market} who use, evaluate, approve, or oversee "
@@ -207,7 +269,7 @@ TOPICS = [
                 "name": "ICH Q9(R1): Quality Risk Management",
                 "url": "https://database.ich.org/sites/default/files/ICH_Q9%28R1%29_Guideline_Step4_2022_1219.pdf",
                 "filename": "ich-q9-r1.pdf",
-                "instruments": ["ICH Q9", "ICH Q9(R1)"],
+                "instruments": ["ICH Q9(R1)"],
             },
         ],
     },
@@ -218,11 +280,42 @@ TOPICS = [
         "sop_title": "Validation of Analytical Test Methods",
         "purpose": (
             "Describe how analytical test methods are validated - the "
-            "characteristics assessed, the studies performed, and the criteria "
-            "applied - so that each method is demonstrated suitable for its "
-            "intended use before it is relied on for release, stability, or "
-            "in-process decisions."
+            "characteristics assessed, the studies performed, and the "
+            "criteria applied to demonstrate each method suitable for "
+            "its intended use."
         ),
+        "coverage": {
+            "covers": [
+                "ICH Q2(R2) and ICH Q14, which are adopted in the US, "
+                "the EU, and the other ICH regions.",
+                "United States expectations: the FDA guidance on "
+                "analytical procedures and methods validation is in "
+                "the packet.",
+            ],
+            "markets": {
+                "us": None,
+                "eu": (
+                    "EU market selected: ICH Q2(R2) and ICH Q14 are "
+                    "adopted in the EU and are in the packet, but no "
+                    "EU-specific instrument (such as EU GMP Chapter 6, "
+                    "Quality Control) is in it."
+                ),
+            },
+            "archetypes": {
+                "device": (
+                    "Medical device selected: for devices, analytical "
+                    "validation sits inside design controls (21 CFR "
+                    "Part 820), which this packet does not cover."
+                ),
+                "ivd": (
+                    "In vitro diagnostics selected: for diagnostics, "
+                    "analytical performance is established under design "
+                    "controls and performance evaluation (21 CFR Parts "
+                    "809 and 820, EU IVDR), which this packet does not "
+                    "cover."
+                ),
+            },
+        },
         "scope_in": (
             "Applies to the validation of analytical procedures used for "
             "release, stability, and in-process testing at a {archetype} "
@@ -247,7 +340,7 @@ TOPICS = [
                 "name": "ICH Q2(R2): Validation of Analytical Procedures",
                 "url": "https://database.ich.org/sites/default/files/ICH_Q2%28R2%29_Guideline_2023_1130.pdf",
                 "filename": "ich-q2-r2.pdf",
-                "instruments": ["ICH Q2", "ICH Q2(R2)"],
+                "instruments": ["ICH Q2(R2)"],
             },
             {
                 "name": "ICH Q14: Analytical Procedure Development",
@@ -281,6 +374,30 @@ def topic_by_id(topic_id):
 
 def topic_by_title(title):
     return next((t for t in TOPICS if t["title"] == title), None)
+
+
+def coverage_flags(topic, market, archetype):
+    """Deterministic coverage flags for one run: the deficits
+    between what the user selected and what the topic's packet
+    genuinely covers, from the topic's own coverage declaration.
+    A combined market (US and EU) is checked as both of its
+    components. An empty list means the selections sit inside
+    what the packet covers. The run always proceeds - the flags
+    travel with the draft (Don't Halt, Flag Gaps)."""
+    cov = topic.get("coverage", {}) if topic else {}
+    flags = []
+    markets = cov.get("markets", {})
+    market_id = (market or {}).get("id", "")
+    components = ("us", "eu") if market_id == "us-eu" else (market_id,)
+    for component in components:
+        flag = markets.get(component)
+        if flag:
+            flags.append(flag)
+    if archetype:
+        flag = cov.get("archetypes", {}).get(archetype.get("id", ""))
+        if flag:
+            flags.append(flag)
+    return flags
 
 
 def procedures_for(archetype_id):

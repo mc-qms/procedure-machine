@@ -23,7 +23,11 @@ The drafting mode above starts from your sources: guidance, manuals, an existing
 
 You don't describe your company — you pick the archetype closest to it: monoclonal antibodies, diagnostics, cell therapy, combination products, and the like. The machine shows the procedure system the regulations require for that archetype — the list drawn from ICH Q10 and the CFRs — and you pick the one procedure you need. It fetches the public regulations and guidance registered for that procedure, builds the packet from them, and runs the same loop: drafting, human-factors review, cold-read audit.
 
+Genesis is currently set up for biotech and life-sciences organizations — the archetypes and the registered procedures are life-sciences ones. Other industries may be added later.
+
 Two rules are Genesis's own. Regulatory citations are checked against the packet by a deterministic source check: a citation that does not trace to a fetched source is removed, never flagged and kept. And references to your own documents — document numbers, form numbers, other SOPs — are placeholders by design, flagged in the draft for your later edit.
+
+Each registered procedure also declares what its sources genuinely cover. If a selection runs past the packet — an EU market on sources with no EU-specific instruments, a combination product on a packet with no device rules — the run still proceeds, but the deficit is flagged in the user interface and in the flag list that travels with the draft, naming what is not covered.
 
 What the regulations leave open is never filled in. Approval authorities, review periods, systems of record — those come back as flagged gaps and a decision list that travels with the draft. A Genesis run ends as a Discussion Draft by design: structure from the regulations; practice from you.
 

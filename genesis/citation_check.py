@@ -8,10 +8,20 @@ prompt.
 
 What it verifies, and how (the granularity is stated, not hidden):
 - Instruments (ICH Q10, NIST AI RMF, a named FDA guidance, ...):
-  verified when the instrument is in the packet's inventory. The
-  inventory is authoritative from genesis_intake.json (the sources
-  the registry sent and the instruments each one carries), plus
-  any instrument designation found in the packet text itself.
+  verified when the instrument is in the packet's inventory, at
+  the exact revision the packet carries - a citation to ICH Q9
+  does not verify against a packet whose risk-management source
+  is ICH Q9(R1), because the revision is part of what the
+  citation claims. The inventory is authoritative from
+  genesis_intake.json (the sources the registry sent and the
+  instruments each one carries), plus any instrument designation
+  found in the packet text itself.
+- References entries: an entry in the draft's References section
+  that matches no packet source (by a verified instrument it
+  names, or by its title) is listed in the flag list as an
+  unrecognized reference, for the author to confirm or remove.
+  Titles are matched fuzzily, so this is a warning only - title
+  entries are never removed automatically.
 - CFR sections (21 CFR 211.100 and the like): verified when the
   instrument is a CFR part the packet text works with AND the
   exact section string appears in the packet text.
@@ -104,7 +114,10 @@ def load_inventory(session_dir):
     # inventory: a guidance in the packet that discusses ICH Q10
     # by name puts ICH Q10 within the drafter's reach.
     for m in re.finditer(r"\bICH\s+([QMES]\d+(?:\s*\(R\d+\))?)", packet_text):
-        inst = "ICH " + m.group(1)
+        # Normalized exactly as extract_citations normalizes, so a
+        # designation the packet text carries ("ICH Q9(R1)") and a
+        # citation to it land on the same inventory string.
+        inst = "ICH " + re.sub(r"\s+", "", m.group(1).upper())
         inv["instruments"].add(_norm(inst))
         inv["bases"].add(_base(inst))
     if re.search(r"\bNIST\s+AI\s+(RMF|100-1)\b", packet_text):
@@ -193,12 +206,21 @@ def verify(citation, inv):
             return True, "an FDA guidance is a packet source"
         return False, "no FDA guidance is a packet source"
     if kind == "NIST":
-        if "NIST AI RMF" in inv["bases"] or "AI RMF" in inv["bases"]:
+        if "NIST AI RMF" in inv["instruments"] or "AI RMF" in inv["instruments"]:
             return True, "the NIST AI RMF is a packet source"
         return False, "the NIST AI RMF is not a packet source"
-    # ICH, GMLP, USP, ISO, EU GMP: instrument-level verification.
-    if _base(citation["instrument"]) in inv["bases"]:
+    # ICH, GMLP, USP, ISO, EU GMP: instrument-level verification at
+    # the exact revision. The packet's inventory carries the exact
+    # forms; a citation whose revision differs from the packet's -
+    # or that names no revision where the packet's instrument has
+    # one - does not verify. It becomes a repair item, then a cut
+    # at delivery, like any other unverified citation.
+    if _norm(citation["instrument"]) in inv["instruments"]:
         return True, f"{citation['instrument']} is a packet source"
+    if _base(citation["instrument"]) in inv["bases"]:
+        return False, (f"the packet carries {_base(citation['instrument'])} "
+                       f"in a different revision - a citation must match "
+                       f"the packet's revision exactly")
     return False, f"{citation['instrument']} is not a packet source"
 
 
@@ -242,12 +264,15 @@ def internal_references(text, citations):
 
     matches = []
     patterns = [
+        # The Genesis sister-procedure subtype first, so it is
+        # always captured whole: [INTERNAL SOP PLACEHOLDER: name].
+        r"\[INTERNAL SOP PLACEHOLDER:[^\]]+\]",
         r"\bSOP-[A-Z]{1,4}-\d{2,4}\b",
         r"\b[A-Z]{2,4}-\d{3,4}\b",
         r"\[[^\]]{0,120}placeholder[^\]]{0,120}\]",
     ]
     for pat in patterns:
-        flags = re.IGNORECASE if "placeholder" in pat else 0
+        flags = re.IGNORECASE if "placeholder" in pat.lower() else 0
         for m in re.finditer(pat, text, flags):
             if not inside(m.start()):
                 matches.append((m.start(), m.end(), m.group(0)))
@@ -271,6 +296,88 @@ def gap_markers(text):
         body = body.strip()
         if body not in out:
             out.append(body)
+    return out
+
+
+_REF_HEADING_RE = re.compile(
+    r"^##\s+(?:\d+(?:\.\d+)?\.\s*)?References\b", re.IGNORECASE)
+_BULLET_RE = re.compile(r"^\s*(?:[-*•]|\d+[.)])\s+(.+?)\s*$")
+
+
+def reference_entries(text):
+    """The entries in the draft's References section: bulleted or
+    numbered lines under the References heading, up to the next
+    section heading. Only list lines count - a stray line of prose
+    under the heading is not an entry."""
+    lines = text.splitlines()
+    start = None
+    for i, ln in enumerate(lines):
+        if _REF_HEADING_RE.match(ln.strip()):
+            start = i + 1
+            break
+    if start is None:
+        return []
+    entries = []
+    for ln in lines[start:]:
+        if ln.startswith("## "):
+            break
+        m = _BULLET_RE.match(ln)
+        if m and m.group(1):
+            entries.append(m.group(1))
+    return entries
+
+
+def _content_tokens(text):
+    """Significant words for title matching: four or more letters,
+    or any token carrying a digit (Q9, 100-1, 2025)."""
+    toks = set()
+    for w in re.findall(r"[A-Za-z0-9][A-Za-z0-9\-]*", (text or "").upper()):
+        if len(w) >= 4 or any(ch.isdigit() for ch in w):
+            toks.add(w)
+    return toks
+
+
+def _title_matches_source(entry, sources):
+    """Fuzzy title match against the packet's source names: the
+    entry and a source name are the same document when most of
+    the shorter one's significant words appear in the other, with
+    at least four words in common. Deliberately conservative -
+    this feeds a warning, never a removal."""
+    etoks = _content_tokens(entry)
+    if not etoks:
+        return False
+    for src in sources:
+        stoks = _content_tokens(src.get("name", ""))
+        if not stoks:
+            continue
+        shared = etoks & stoks
+        if len(shared) >= 4 and len(shared) / min(len(etoks), len(stoks)) >= 0.6:
+            return True
+    return False
+
+
+def unrecognized_references(text, inv, check):
+    """References-section entries that match no packet source:
+    not by a verified instrument they name, and not by title.
+    A full title is invisible to the citation patterns above -
+    an invented guidance cited by title only would otherwise pass
+    the check entirely. Entries carrying a citation that failed
+    verification are not listed here: they are already reported
+    as unverified citations. Warning only - the flag list names
+    them for the author's edit; nothing is removed."""
+    out = []
+    for entry in reference_entries(text):
+        if _MARKER_RE.search(entry) or "citation removed" in entry:
+            continue
+        cits = extract_citations(entry)
+        if any(verify(c, inv)[0] for c in cits):
+            continue
+        if cits:
+            continue
+        if _title_matches_source(entry, inv["sources"]):
+            continue
+        if entry not in out:
+            out.append(entry)
     return out
 
 
@@ -299,10 +406,23 @@ def build_flag_list(session_dir, draft_text, inv, check, removed):
         lines.append(f"- Functions: {', '.join(funcs) if funcs else '(none selected)'}")
         lines.append(f"- Procedure: {intake.get('topic_title', '?')}")
         lines.append(f"- Document title: {intake.get('title', '?')}")
-        if intake.get("coverage_flags"):
-            lines.append("- Coverage flags: " + "; ".join(intake["coverage_flags"]))
     else:
         lines.append("- (No Genesis intake record in this session.)")
+    lines.append("")
+    lines.append("## Coverage - what this packet does and does not cover")
+    covers = intake.get("coverage_covers", [])
+    for c in covers:
+        lines.append(f"- Covers: {c}")
+    cov_flags = intake.get("coverage_flags", [])
+    if cov_flags:
+        lines.append("Flagged for this run - the selections below run past "
+                     "what the packet's sources cover. The draft does not "
+                     "cover them, and they are not filled in:")
+        for fl in cov_flags:
+            lines.append(f"- {fl}")
+    else:
+        lines.append("- No coverage deficits were flagged for this run: "
+                     "the selections sit inside what the packet covers.")
     lines.append("")
     lines.append("## Sources the packet was built from")
     if inv["sources"]:
@@ -328,10 +448,28 @@ def build_flag_list(session_dir, draft_text, inv, check, removed):
         lines.append(f"  - Removed: \"{r['raw']}\" - {r['basis']}. The removed "
                      f"text is recorded here only; it does not stand in the draft.")
     lines.append("- How verification works: a citation is verified when its "
-                 "instrument is a packet source; a CFR section must also appear "
-                 "in the packet text. A pinpoint section inside a guidance "
-                 "document is verified at instrument level only - confirm the "
-                 "section number against the source in your later edit.")
+                 "instrument is a packet source, at the exact revision the "
+                 "packet carries (a citation to ICH Q9 does not verify "
+                 "against an ICH Q9(R1) packet); a CFR section must also "
+                 "appear in the packet text. A pinpoint section inside a "
+                 "guidance document is verified at instrument level only - "
+                 "confirm the section number against the source in your "
+                 "later edit.")
+    lines.append("")
+    lines.append("## References in the draft")
+    unrec = unrecognized_references(draft_text, inv, check)
+    if unrec:
+        lines.append("Unrecognized references - confirm or remove in your "
+                     "edit. These entries in the draft's References section "
+                     "match no packet source, by instrument or by title. "
+                     "The source check does not remove title entries "
+                     "automatically; an entry that should not be there is "
+                     "yours to delete:")
+        for e in unrec:
+            lines.append(f"- {e}")
+    else:
+        lines.append("- Every entry in the draft's References section "
+                     "matches a packet source.")
     lines.append("")
     lines.append("## Internal references - placeholders by design")
     refs = internal_references(draft_text, extract_citations(draft_text))
@@ -404,6 +542,8 @@ def main():
     report = {"draft": args.draft, "enforced": bool(args.enforce),
               "verified": check["verified"], "unverified": check["unverified"],
               "removed": removed,
+              "unrecognized_references": unrecognized_references(
+                  text, inv, check),
               "internal_references": internal_references(
                   text, extract_citations(text)),
               "gap_markers": gap_markers(text)}
@@ -412,6 +552,8 @@ def main():
     print(json.dumps({"verified": len(check["verified"]),
                       "unverified": len(check["unverified"]),
                       "removed": len(removed),
+                      "unrecognized_references": len(
+                          report["unrecognized_references"]),
                       "internal_references": len(report["internal_references"]),
                       "gap_markers": len(report["gap_markers"])}))
     return 0

@@ -70,7 +70,14 @@ def _strip_prompt_echoes(draft_text):
     lines = draft_text.splitlines()
     i = 0
     while i < len(lines):
-        if lines[i].startswith("UNCOVERED WORKFLOW STEPS"):
+        # Instruction blocks handed to the drafting model as text:
+        # the header line and its bullet list are prompt, never
+        # document content. Genesis citation repairs are delivered
+        # as structured findings now, not as a text block - the
+        # GENESIS SOURCE CHECK strip remains as a backstop in case
+        # the old block shape ever reaches a draft.
+        if lines[i].startswith(("UNCOVERED WORKFLOW STEPS",
+                                "GENESIS SOURCE CHECK")):
             i += 1
             while i < len(lines) and (lines[i].startswith("- ")
                                       or not lines[i].strip()):
@@ -1048,6 +1055,40 @@ def _run_lookup(session_dir):
         return None
 
 
+def _genesis_repair_findings(unverified):
+    """Citation repairs from the Genesis v1 source check, shaped
+    as findings in the HFE findings schema, so the revision call
+    receives them inside the FINDINGS structure it already
+    consumes. The earlier shape - a free-text instruction block
+    prepended to the revision payload - is the shape that echoed
+    into a draft in the Cary 60 run; a finding inside the JSON
+    carries no header prose to echo."""
+    out = []
+    for c in unverified:
+        raw = c.get("raw", "?")
+        basis = c.get("basis", "")
+        out.append({
+            "section_step": f"Regulatory citation in the first draft: {raw}",
+            "check": "genesis-source-check",
+            "verbatim_quote": raw,
+            "what_a_qualified_user_could_reasonably_do_wrong": (
+                f"This citation does not trace to the packet: {basis}. "
+                "A reader would take the requirement it supports to be "
+                "grounded in a source the machine never fetched, and "
+                "the citation will be removed by the source check at "
+                "delivery if it remains."),
+            "suggested_fix_plain_words": (
+                f"Remove the citation \"{raw}\", or replace it with a "
+                "citation to a source in the packet. Do not keep the "
+                "citation in any other form."),
+            "load_bearing": (
+                "A Genesis draft's requirements stand on the packet; "
+                "an unverified citation lends an unsupported "
+                "requirement the packet's authority."),
+        })
+    return out
+
+
 def _run_loop_chunk(session_dir):
     """Advance the drafting loop until a pause is needed or it finishes.
 
@@ -1106,10 +1147,12 @@ def _run_loop_chunk(session_dir):
             st.session_state.stage_status["drafting-1"] = "done"
             # Genesis source check (deterministic, on the first
             # draft, before the audits): citations that do not
-            # trace to the packet are handed to the next drafting
-            # pass as repair items. The hard enforcement - removal -
-            # runs at delivery, in the finish step.
-            _genesis_check_note = ""
+            # trace to the packet become repair findings, appended
+            # to the HFE findings below so the revision call
+            # receives them inside the FINDINGS structure. The hard
+            # enforcement - removal - runs at delivery, in the
+            # finish step.
+            _genesis_repairs = []
             if _is_genesis_session(session_dir):
                 _cc_code, _cc_out = run(
                     ["python3", os.path.join(BASE, "genesis", "citation_check.py"),
@@ -1122,16 +1165,7 @@ def _run_loop_chunk(session_dir):
                         _bad = _cc.get("unverified", [])
                     except (OSError, json.JSONDecodeError):
                         _bad = []
-                    if _bad:
-                        _genesis_check_note = (
-                            "GENESIS SOURCE CHECK (deterministic - run on the "
-                            "first draft): the following regulatory citations "
-                            "do not appear in the packet sources and will be "
-                            "removed by the source check at delivery if they "
-                            "remain. Remove each one, or replace it with a "
-                            "citation to a packet source:\n" +
-                            "\n".join(f"- {c.get('raw', '?')} ({c.get('basis', '')})"
-                                      for c in _bad) + "\n\n")
+                    _genesis_repairs = _genesis_repair_findings(_bad)
             # human-factors
             st.session_state.stage_status["human-factors"] = "running"
             hfe_prompt = _secret("HFE_SYSTEM_PROMPT")
@@ -1157,14 +1191,23 @@ def _run_loop_chunk(session_dir):
             _n_hfe = len(hfe_findings.get("findings", [])) if isinstance(hfe_findings, dict) else len(hfe_findings)
             st.session_state.stage_status["human-factors"] = "done"
             st.session_state.setdefault("loop_detail", {})["human-factors"] = f"{_n_hfe} finding(s)."
+            # Genesis citation repairs ride inside the findings
+            # structure (appended after the HFE record is written,
+            # so hfe_findings.json stays the HFE pass's own record;
+            # the combined set is what the revision call receives,
+            # and it is recorded in the revision call's own record).
+            if _genesis_repairs:
+                if isinstance(hfe_findings, dict):
+                    hfe_findings.setdefault("findings", []).extend(
+                        _genesis_repairs)
+                elif isinstance(hfe_findings, list):
+                    hfe_findings.extend(_genesis_repairs)
             # drafting 2 -> draft v2 (HFE fixes)
             st.session_state.stage_status["drafting-2"] = "running"
             _middle = f"FINDINGS:\n{json.dumps(hfe_findings, indent=2)}"
             _steps = _uncovered_steps_text(session_dir)
             if _steps:
                 _middle = _steps + "\n" + _middle
-            if _genesis_check_note:
-                _middle = _genesis_check_note + _middle
             ok, draft_v2 = _revise(session_dir, packet_md, model, drafting_prompt,
                                    "draft_v1.md", _middle, "v1",
                                    restore_fills=True)
@@ -1338,6 +1381,8 @@ The drafting mode starts from your sources: guidance, manuals, an existing syste
 
 You don't describe your company — you pick the archetype closest to it: monoclonal antibodies, diagnostics, cell therapy, combination products, and the like. The machine shows the procedure system the regulations require for that archetype — the list drawn from ICH Q10 and the CFRs — and you pick the one procedure you need. It fetches the public regulations and guidance for that procedure, drafts the SOP from them, checks every regulatory citation against what it actually fetched, and cold-read audits the result like any other run.
 
+Genesis is currently set up for biotech and life-sciences organizations — the archetypes and the registered procedures are life-sciences ones. Other industries may be added later.
+
 What the regulations leave open is never filled in. Approval authorities, review periods, systems of record, and references to your own documents come back flagged — as placeholders in the draft and a decision list that travels with it, for your later edit in your own system.
 
 A Genesis run ends as a Discussion Draft by design: structure from the regulations; practice from you."""
@@ -1350,10 +1395,11 @@ A Genesis run ends as a Discussion Draft by design: structure from the regulatio
 GENESIS_DRAFTING_ADDENDUM = """
 
 GENESIS MODE - additional rules for this run. The packet is built from public regulations and guidance, not from the author's company documents, and there is no company system behind it yet.
-1. Regulatory citations: cite only instruments and sections that appear in the packet. Prefer citing the instrument (for example "ICH Q10") over a pinpoint section unless the packet shows that section. A citation the packet does not contain will be removed by a deterministic source check after drafting - do not rely on one.
-2. References to the organization's own documents (other SOPs, forms, document numbers) are placeholders by design: write them as bracketed placeholders, for example [SOP-QA-001, Change Control - placeholder: correct to your real document], never as if the number were known.
+1. Regulatory citations: cite only instruments and sections that appear in the packet, at the exact revision the packet carries (for example "ICH Q9(R1)" when that is the packet's source - not "ICH Q9"). Prefer citing the instrument over a pinpoint section unless the packet shows that section. A citation the packet does not contain will be removed by a deterministic source check after drafting - do not rely on one.
+2. When a step depends on another of the organization's procedures, name the dependency with the placeholder marker [INTERNAL SOP PLACEHOLDER: <the procedure's name>] - for example [INTERNAL SOP PLACEHOLDER: Change Control SOP]. Never invent a document number. Other references to the organization's own documents or forms are bracketed placeholders in the same spirit, without invented numbers.
 3. Site-specific values the regulations leave open - approval authorities, review periods, retention times, named systems of record - are gap markers ([AUTHOR INPUT REQUIRED: ...]), not text. The Scope and Responsibilities normal-practice rule still applies, marked as normal practice.
-4. End the draft as a Discussion Draft; the flagged items are the author's later edit, in their own system."""
+4. The Purpose and Scope are fixed text, set at intake and carried in the packet: reproduce them exactly as given. Do not reword them, expand them, or add policy statements to them.
+5. End the draft as a Discussion Draft; the flagged items are the author's later edit, in their own system."""
 
 
 def _is_genesis_session(session_dir):
@@ -1369,7 +1415,27 @@ def _drafting_prompt(session_dir):
     if not base:
         return None
     if _is_genesis_session(session_dir):
-        return base + GENESIS_DRAFTING_ADDENDUM
+        prompt = base + GENESIS_DRAFTING_ADDENDUM
+        # A topic may declare principles the procedure must carry
+        # as obligations in its body. They are handed over as
+        # obligations for the Responsibilities / Procedure text -
+        # never as Purpose text, which is fixed at intake.
+        topic = None
+        if GENESIS_REGISTRY is not None:
+            try:
+                with open(os.path.join(session_dir,
+                                       "genesis_intake.json")) as f:
+                    _intake = json.load(f)
+                topic = GENESIS_REGISTRY.topic_by_id(_intake.get("topic_id"))
+            except (OSError, json.JSONDecodeError):
+                topic = None
+        if topic and topic.get("principles"):
+            prompt += (
+                "\n\nGENESIS PRINCIPLES - this procedure must state the "
+                "following as obligations in its body (Responsibilities "
+                "or Procedure), never inside the Purpose section:\n" +
+                "\n".join(f"- {p}" for p in topic["principles"]))
+        return prompt
     return base
 
 
@@ -1399,12 +1465,23 @@ def _genesis_build(session_dir, arch, market, functions, topic, title,
                         "filename": src["filename"],
                         "instruments": src["instruments"],
                         "fetch_status": "", "read_status": ""})
+    # Coverage, checked deterministically at build time: the
+    # topic's declaration says what its packet genuinely covers,
+    # and any selection running past it is flagged here, in the
+    # intake, so the deficit travels with the run and lands in the
+    # flag list. The run proceeds either way (Don't Halt, Flag
+    # Gaps) - but a US+EU combination-product run on a packet with
+    # no EU and no device sources no longer looks covered.
+    _all_flags = list(coverage_flags) + reg.coverage_flags(topic, market, arch)
     intake = {"mode": "genesis", "archetype_id": arch["id"],
               "archetype_label": arch["label"],
               "market_id": market["id"], "market_label": market["label"],
               "functions": list(functions), "topic_id": topic["id"],
               "topic_title": topic["title"], "title": title,
-              "coverage_flags": list(coverage_flags), "sources": sources}
+              "coverage_flags": _all_flags,
+              "coverage_covers": list(
+                  topic.get("coverage", {}).get("covers", [])),
+              "sources": sources}
     with open(os.path.join(session_dir, "genesis_intake.json"), "w") as f:
         json.dump(intake, f, indent=2)
     st.session_state.stage_status["purpose-scope"] = "done"
