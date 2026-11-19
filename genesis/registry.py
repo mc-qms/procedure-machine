@@ -422,6 +422,14 @@ SOURCES = {
         "filename": "fda-analytical-procedures-methods-validation.pdf",
         "instruments": ["FDA methods validation guidance"],
     },
+    "fda-data-integrity-guidance": {
+        "name": "FDA guidance: Data Integrity and Compliance With Drug "
+                "CGMP: Questions and Answers (December 2018)",
+        "url": "https://www.fda.gov/media/119570/download",
+        "filename": "fda-data-integrity-guidance.pdf",
+        "instruments": ["FDA data integrity guidance",
+                        "Data Integrity and Compliance With Drug CGMP"],
+    },
 }
 
 TOPICS = [
@@ -514,16 +522,9 @@ TOPICS = [
                 "laboratory records, and retention under 211.180) "
                 "and 21 CFR Part 11 for electronic records and "
                 "signatures.",
-            ],
-            "always": [
-                "FDA's 2018 data integrity guidance (Data Integrity "
-                "and Compliance With Drug CGMP: Questions and "
-                "Answers) is not in this packet; "
-                "documentation-practice coverage rests on the Part "
-                "211 records provisions and Part 11 for the United "
-                "States, EU GMP Chapter 4, and ICH Q10 for "
-                "documentation within the pharmaceutical quality "
-                "system.",
+                "FDA's 2018 data integrity guidance: the Agency's "
+                "data-integrity and ALCOA+ expectations for CGMP "
+                "records.",
             ],
         },
         "scope_in": (
@@ -550,7 +551,7 @@ TOPICS = [
             "record keeping", "alcoa",
         ],
         "source_ids": ["eu-gmp-ch4", "cfr-part-211", "cfr-part-11",
-                       "ich-q10"],
+                       "ich-q10", "fda-data-integrity-guidance"],
     },
     {
         "id": "change-control",
@@ -1241,12 +1242,9 @@ TOPICS = [
                 "United States requirements: 21 CFR Part 11 (electronic "
                 "records and signatures) and 21 CFR 211.68 (automatic and "
                 "electronic equipment controls).",
-            ],
-            "always": [
-                "FDA's 2018 data integrity guidance (Data Integrity and "
-                "Compliance With Drug CGMP: Questions and Answers) is "
-                "not in this packet; US data-integrity coverage rests on "
-                "the Part 11 and Part 211 text and Annex 11.",
+                "FDA's 2018 data integrity guidance: the Agency's "
+                "data-integrity and ALCOA+ expectations for CGMP "
+                "records.",
             ],
         },
         "scope_in": (
@@ -1269,7 +1267,7 @@ TOPICS = [
             "software validation", "audit trail",
         ],
         "source_ids": ["eu-gmp-annex11", "cfr-part-11", "cfr-part-211",
-                       "ich-q10"],
+                       "ich-q10", "fda-data-integrity-guidance"],
     },
     {
         "id": "ai-use",
