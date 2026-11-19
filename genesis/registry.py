@@ -506,8 +506,9 @@ TOPICS = [
             "covers": [
                 "EU GMP Chapter 4 (documentation): the good "
                 "documentation practice requirements for generating, "
-                "completing, and retaining records and documents, "
-                "and ICH Q10.",
+                "completing, and retaining records and documents.",
+                "ICH Q10: documentation and record-keeping within "
+                "the pharmaceutical quality system.",
                 "United States requirements: the 21 CFR Part 211 "
                 "records provisions (production, control, and "
                 "laboratory records, and retention under 211.180) "
@@ -517,9 +518,12 @@ TOPICS = [
             "always": [
                 "FDA's 2018 data integrity guidance (Data Integrity "
                 "and Compliance With Drug CGMP: Questions and "
-                "Answers) is not in this packet; US "
+                "Answers) is not in this packet; "
                 "documentation-practice coverage rests on the Part "
-                "211 records provisions and Part 11.",
+                "211 records provisions and Part 11 for the United "
+                "States, EU GMP Chapter 4, and ICH Q10 for "
+                "documentation within the pharmaceutical quality "
+                "system.",
             ],
         },
         "scope_in": (
