@@ -433,6 +433,26 @@ def build_flag_list(session_dir, draft_text, inv, check, removed):
             lines.append(f"- {src.get('name', '?')} - read status: {status}")
     else:
         lines.append("- (Source list unavailable.)")
+    # A source can read OK and still contribute nothing to the
+    # packet (no section matched, or every section was trimmed).
+    # The packet's final state is authoritative: name such sources
+    # here, so a read-OK source is never silently absent from the
+    # draft's grounding.
+    pkt_path = os.path.join(session_dir, "source_packet.json")
+    if os.path.exists(pkt_path):
+        try:
+            pkt = json.load(open(pkt_path))
+            counts = {}
+            for sec in pkt.get("relevant_sections", []):
+                counts[sec.get("source")] = counts.get(sec.get("source"), 0) + 1
+            for s in pkt.get("sources", []):
+                if (s.get("status") in ("OK", "PARTIAL")
+                        and counts.get(s["name"], 0) == 0):
+                    lines.append(
+                        f"- Source contributed no sections to this packet: "
+                        f"{s['name']}. The draft is not grounded in it.")
+        except (OSError, json.JSONDecodeError):
+            pass
     lines.append("")
     lines.append("## Regulatory citations")
     verified = check.get("verified", [])

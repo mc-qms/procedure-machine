@@ -14,7 +14,13 @@ This script is the second step the packet-builder skill specifies:
 one mid-tier model call per relevant section, yes/no + one-line
 reason, recorded in the packet's `model_relevance_calls`. Sections
 the model rejects are dropped from the packet; template-matched
-sections are never dropped here (the template requires them).
+sections are never dropped here (the template requires them), and
+neither are floor sections: packet.py marks each usable source's
+best-scoring sections as its floor of representation, so a source
+cannot be trimmed to zero here. After trimming, the packet's
+zero-contribution gaps are refreshed against what actually
+remains - a source the final packet does not use is flagged,
+never passed silently.
 
 Modes: env (key from OPENROUTER_API_KEY env — the Streamlit path)
 or vault (local testing through the Muse OpenRouter helper).
@@ -82,6 +88,36 @@ def write_packet_md(session_dir, packet):
         f.write("\n".join(lines))
 
 
+def refresh_zero_contribution_gaps(packet):
+    """Recompute the packet's zero-contribution gaps from its
+    current relevant sections. packet.py flags a usable source
+    that selected nothing; trimming here can create the same
+    state by dropping every section a source had (its floor
+    sections aside), so the flag is refreshed, not inherited:
+    stale entries for sources that do contribute are removed,
+    and sources left at zero are (re)flagged. Returns the list
+    of zero-contribution source names."""
+    counts = {}
+    for sec in packet.get("relevant_sections", []):
+        counts[sec.get("source")] = counts.get(sec.get("source"), 0) + 1
+    zero = [s["name"] for s in packet.get("sources", [])
+            if s.get("status") in ("OK", "PARTIAL")
+            and counts.get(s["name"], 0) == 0]
+    gaps = [g for g in packet.get("gaps", [])
+            if g.get("kind") != "zero_contribution"]
+    for name in zero:
+        gaps.append({
+            "kind": "zero_contribution",
+            "what_is_missing": f"Source contributed no sections to this packet: {name}",
+            "why_it_matters": "The source was read, but none of its sections matched this procedure, so the draft is not grounded in it.",
+            "where_it_was_looked_for": name,
+            "what_would_close_it": "A procedure whose terms match the source, or removing the source from the packet.",
+        })
+    packet["gaps"] = gaps
+    packet["zero_contribution_sources"] = zero
+    return zero
+
+
 def strip_fence(text):
     t = text.strip()
     if t.startswith("```"):
@@ -130,6 +166,15 @@ def main():
                           "verdict": "kept-template-match",
                           "reason": "Required by the template; not model-judged."})
             continue
+        # Floor sections are the source's guaranteed representation
+        # (marked by packet.py); the model does not get to drop
+        # them either, or a source could still be trimmed to zero.
+        if sec.get("floor"):
+            kept.append(sec)
+            calls.append({"section": sec.get("title") or sec.get("section_id"),
+                          "verdict": "kept-source-floor",
+                          "reason": "Per-source floor: every packet source keeps its best-scoring sections; not model-judged."})
+            continue
         excerpt = (sec.get("text") or "")[:2000]
         label = sec.get("title") or sec.get("section_id") or f"section {i}"
         user = (f"Document type: {doc_type}\nPurpose: {purpose}\n\n"
@@ -167,6 +212,10 @@ def main():
     dropped = len(sections) - len(kept)
     packet["relevant_sections"] = kept
     packet["model_relevance_calls"] = calls
+    zero = refresh_zero_contribution_gaps(packet)
+    for name in zero:
+        print(f"  zero-contribution: {name} contributes no sections "
+              f"to the final packet; flagged in gaps.")
     # Token estimate is chars / 4 over the kept excerpts, as packet.py does.
     chars = sum(len(sec.get("text") or "") for sec in kept)
     packet["packet_chars"] = chars

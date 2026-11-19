@@ -56,6 +56,15 @@ Selection rule, deterministic first:
 2. Keyword matches to purpose / scope terms in section titles and text.
 3. Model relevance calls, only if still needed - not run in v1.
 
+Per-source floor (v1.2): every usable source keeps a floor of
+representation. Its best-scoring selected sections (up to 3, ranked
+by the deterministic score below) are marked "floor": true, and
+the relevance step may not drop them - the same protection
+template-matched sections have. A usable source that still ends
+with zero sections in the packet is flagged in gaps[] as a
+zero-contribution source: the draft is not grounded in it, and
+the flag says so instead of passing silently.
+
 Chunk fallback (v1.1): a usable source with no detectable sections
 (flat web article, plain text without headings) is split into
 ~2,000-char passages, titled "Passage N", and selected by the
@@ -80,7 +89,7 @@ import re
 import sys
 import uuid
 
-VERSION = "1.1"
+VERSION = "1.2"
 TARGET_TOKENS = (8000, 12000)
 HARD_CAP_TOKENS = 20000
 # Token estimate: chars / 4. Stated in the packet; not a tokenizer count.
@@ -462,18 +471,28 @@ def main(argv=None):
                 continue
             title_norm = norm_stripped(title)
             reason = None
+            # Deterministic score, used only to rank a source's own
+            # sections for the per-source floor below: a template
+            # match outranks a title keyword match, which outranks
+            # a text keyword match; within a kind, more distinct
+            # matched terms rank higher.
+            score = 0
             if title_norm in template_titles:
                 reason = "template-match"
+                score = 10000
             else:
                 # Keyword match on title, then on text.
                 title_words = keywords(title)
-                if title_words & terms:
-                    reason = "keyword-match: " + ", ".join(sorted(title_words & terms))
+                title_hit = title_words & terms
+                if title_hit:
+                    reason = "keyword-match: " + ", ".join(sorted(title_hit))
+                    score = 100 + len(title_hit)
                 else:
                     text_words = keywords(text)
                     hit = text_words & terms
                     if hit:
                         reason = "keyword-match: " + ", ".join(sorted(hit))
+                        score = len(hit)
             if reason is None:
                 continue
             # PARTIAL sources: only include sections on read pages.
@@ -492,8 +511,48 @@ def main(argv=None):
                 "text": text,
                 "chars": len(text),
                 "selection_reason": reason,
+                "score": score,
             })
             selected_ranges.append((name, start, end))
+
+    # --- per-source floor + zero-contribution sources ------------------
+    # Every usable source keeps a floor of representation: its
+    # best-scoring sections are marked floor-protected, and the
+    # relevance step may not drop them (the same protection
+    # template-matched sections already have). Without this, a
+    # source whose vocabulary scores low against the purpose can
+    # be trimmed to zero sections while the run still presents the
+    # packet as resting on it (found Nov 19, 2026: a live Good
+    # Documentation Practices run read ICH Q10 OK, and the final
+    # packet contained none of it). Rule: up to FLOOR_SECTIONS
+    # sections per source, ranked by deterministic score, then
+    # document order (the sort is stable). The first is always
+    # protected; each further one is protected only while the
+    # source's protected total stays within its allowance - half
+    # the hard cap split evenly across the usable sources - so
+    # sources x floor can never crowd out the rest of the packet.
+    FLOOR_SECTIONS = 3
+    usable_names = [name for name, _rec in usable]
+    if usable_names:
+        floor_allowance = (HARD_CAP_TOKENS // 2) // len(usable_names)
+        by_source = {}
+        for r in relevant:
+            by_source.setdefault(r["source"], []).append(r)
+        for name in usable_names:
+            ranked = sorted(by_source.get(name, []),
+                            key=lambda r: -r.get("score", 0))
+            protected_tokens = 0
+            for i, r in enumerate(ranked[:FLOOR_SECTIONS]):
+                t = token_estimate(r["chars"])
+                if i > 0 and protected_tokens + t > floor_allowance:
+                    break
+                r["floor"] = True
+                protected_tokens += t
+    # A usable source with no selected sections contributes nothing
+    # to the packet. That is flagged in gaps[] below, not passed
+    # silently; relevance.py refreshes the same flag after trimming.
+    zero_contribution = [name for name in usable_names
+                         if not any(r["source"] == name for r in relevant)]
 
     # --- required sections present / missing ---------------------------
     # norm_stripped on both sides, for the same synonym reason as
@@ -539,6 +598,14 @@ def main(argv=None):
                 "basis": "Missing, not present in any OK source. Provisional, assigned by packet.py v1 deterministic rule.",
                 "provisional": True,
             })
+    for name in zero_contribution:
+        gaps.append({
+            "kind": "zero_contribution",
+            "what_is_missing": f"Source contributed no sections to this packet: {name}",
+            "why_it_matters": "The source was read, but none of its sections matched this procedure, so the draft is not grounded in it.",
+            "where_it_was_looked_for": name,
+            "what_would_close_it": "A procedure whose terms match the source, or removing the source from the packet.",
+        })
     for r in relevant:
         if norm_stripped(r["title"]) in template_titles:
             change_dispositions.append({
@@ -645,6 +712,7 @@ def main(argv=None):
         "sources": sources,
         "duplicate_sources": duplicate_sources,
         "chunked_sources": chunked_sources,
+        "zero_contribution_sources": zero_contribution,
         "required_sections": required_sections,
         "relevant_sections": relevant,
         "procedural_elements": procedural_elements,
