@@ -64,7 +64,7 @@ REMOVAL_MARKER = ("[AUTHOR INPUT REQUIRED: regulatory citation removed by the "
 # FDA CFR parts a bare section sign (211.100 after a section mark)
 # can belong to. A section citation outside these is not read as
 # a CFR citation at all.
-KNOWN_PARTS = {"4", "11", "210", "211", "600", "601", "606", "610",
+KNOWN_PARTS = {"4", "7", "11", "210", "211", "600", "601", "606", "610",
                "809", "820", "1271"}
 
 _MARKER_RE = re.compile(
@@ -126,10 +126,10 @@ def load_inventory(session_dir):
     if re.search(r"\bGood Machine Learning Practice\b", packet_text):
         inv["instruments"].add("GOOD MACHINE LEARNING PRACTICE")
         inv["bases"].add("GOOD MACHINE LEARNING PRACTICE")
-    for m in re.finditer(r"\b(\d{3})\.(\d+)\b", packet_text):
+    for m in re.finditer(r"\b(\d{1,3})\.(\d+)\b", packet_text):
         inv["cfr_sections"].add(f"{m.group(1)}.{m.group(2)}")
         inv["cfr_parts"].add(m.group(1))
-    for m in re.finditer(r"\bPart\s+(\d{3})\b", packet_text):
+    for m in re.finditer(r"\bPart\s+(\d{1,3})\b", packet_text):
         inv["cfr_parts"].add(m.group(1))
     return inv
 
@@ -145,12 +145,12 @@ def extract_citations(text):
                       "instrument": instrument, "section": section,
                       "start": m.start(), "end": m.end()})
 
-    for m in re.finditer(r"\b(\d{1,2})\s*CFR\s*(?:Part\s*)?(\d{3})\.(\d+)\b", text):
+    for m in re.finditer(r"\b(\d{1,2})\s*CFR\s*(?:Part\s*)?(\d{1,3})\.(\d+)\b", text):
         add(m, "CFR", f"{m.group(1)} CFR Part {m.group(2)}",
             f"{m.group(2)}.{m.group(3)}")
-    for m in re.finditer(r"\b(\d{1,2})\s*CFR\s*(?:Part\s*)?(\d{3})\b", text):
+    for m in re.finditer(r"\b(\d{1,2})\s*CFR\s*(?:Part\s*)?(\d{1,3})\b", text):
         add(m, "CFR", f"{m.group(1)} CFR Part {m.group(2)}")
-    for m in re.finditer(r"§\s*(\d{3})\.(\d+)\b", text):
+    for m in re.finditer(r"§\s*(\d{1,3})\.(\d+)\b", text):
         if m.group(1) in KNOWN_PARTS:
             add(m, "CFR", f"21 CFR Part {m.group(1)}",
                 f"{m.group(1)}.{m.group(2)}")
@@ -171,8 +171,10 @@ def extract_citations(text):
         add(m, "USP", f"USP {m.group(1)}" if m.group(1) else "USP-NF")
     for m in re.finditer(r"\bISO\s*(\d{4,5}(?::\d{4})?)\b", text):
         add(m, "ISO", f"ISO {m.group(1)}")
-    for m in re.finditer(r"\bEU\s+GMP\s+(?:Chapter|Annex)\s+(\d+)\b", text):
-        add(m, "EU GMP", f"EU GMP ({m.group(0)})")
+    for m in re.finditer(
+            r"\bEU\s+GMP\s+(?:(?:Chapter|Annex)\s+\d+|Part\s+(?:IV|II|I))\b",
+            text):
+        add(m, "EU GMP", m.group(0))
     for m in re.finditer(r"\bFDA(?:'s)?\s+(?:draft\s+)?guidance\b", text,
                          re.IGNORECASE):
         add(m, "FDA guidance", "FDA guidance")
@@ -190,7 +192,7 @@ def verify(citation, inv):
     on, in plain words, for the flag list."""
     kind = citation["kind"]
     if kind == "CFR":
-        part = re.search(r"Part\s+(\d{3})", citation["instrument"])
+        part = re.search(r"Part\s+(\d{1,3})", citation["instrument"])
         part = part.group(1) if part else None
         if citation.get("section"):
             if citation["section"] in inv["cfr_sections"]:

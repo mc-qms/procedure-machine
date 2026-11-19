@@ -2,9 +2,10 @@
 
 Multi-agent procedure orchestration, from guidance to a solid first draft of an SOP or test method.
 
-Give it a purpose, a scope, and your source documents — guidance, instrument manuals, reference procedures — and it drafts an SOP or a test method through a full loop: drafting, human-factors review, drafting, cold-read audit, drafting, cold read, final draft. Python owns what must be true; the LLM owns what should feel human.
+The app opens with one question: **Where do the rules for this SOP come from?**
 
-**Genesis mode** is the second way in, for building a document system from nothing — see below.
+- **A specific manual, method, or document — equipment, products, site processes, or any guideline you want to supply** — the drafting mode. Give it a purpose, a scope, and those sources, and it drafts an SOP or a test method through a full loop: drafting, human-factors review, drafting, cold-read audit, drafting, cold read, final draft. Python owns what must be true; the LLM owns what should feel human. Don't have the document yet? Get the manual, protocol, or governing reference first. This machine drafts only from sources you supply — it won't search for equipment or product documents, and it won't invent technical steps.
+- **Public regulations alone — core quality-system SOPs only (Document Control, Change Control, CAPA, Training). The machine fetches the regulations for you** — **Genesis mode**, for building a document system from nothing — see below.
 
 ## How it works
 
@@ -24,6 +25,8 @@ The drafting mode above starts from your sources: guidance, manuals, an existing
 You don't describe your company — you pick the archetype closest to it: monoclonal antibodies, diagnostics, cell therapy, combination products, and the like. The machine shows the procedure system the regulations require for that archetype — the list drawn from ICH Q10 and the CFRs — and you pick the one procedure you need. It fetches the public regulations and guidance registered for that procedure, builds the packet from them, and runs the same loop: drafting, human-factors review, cold-read audit.
 
 Genesis is currently set up for biotech and life-sciences organizations — the archetypes and the registered procedures are life-sciences ones. Other industries may be added later.
+
+The boundary is plain: Genesis builds the standard procedures for your type of company — the quality-system backbone — from public regulation. Every procedure on an archetype's checklist is buildable from the registered source library. It does not build specialized or company-specific procedures, and it never substitutes another procedure's sources for the one you asked for: a request Genesis has no registered sources for stops plainly and points you to the drafting mode. For a procedure specific to your equipment, product, or site, use the drafting mode with the documents that govern it.
 
 Two rules are Genesis's own. Regulatory citations are checked against the packet by a deterministic source check: a citation that does not trace to a fetched source is removed, never flagged and kept. And references to your own documents — document numbers, form numbers, other SOPs — are placeholders by design, flagged in the draft for your later edit.
 

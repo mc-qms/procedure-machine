@@ -1383,9 +1383,40 @@ You don't describe your company — you pick the archetype closest to it: monocl
 
 Genesis is currently set up for biotech and life-sciences organizations — the archetypes and the registered procedures are life-sciences ones. Other industries may be added later.
 
+The boundary is plain: Genesis builds the standard procedures for your type of company — the quality-system backbone — from public regulation. It does not fetch manuals or documents for specific equipment, products, or sites, and it does not build specialized or company-specific procedures. For a procedure specific to your equipment, product, or site, use Draft from my sources with the documents that govern it — and if you don't have the governing document, neither mode can build it: the machine won't fetch it and won't invent it. Get the document first.
+
 What the regulations leave open is never filled in. Approval authorities, review periods, systems of record, and references to your own documents come back flagged — as placeholders in the draft and a decision list that travels with it, for your later edit in your own system.
 
 A Genesis run ends as a Discussion Draft by design: structure from the regulations; practice from you."""
+
+# Entry-question copy (Nov 18, 2026, final - user-approved after
+# a design consult): the first question in the app, sorting by
+# the SOURCE OF AUTHORITY for the procedure, not by what the
+# user happens to be holding. ALL of the entry wording lives in
+# this one block so it can be swapped in a single edit.
+# Mechanics are not copy: the radio keeps key "app_mode" and
+# values "established"/"genesis" regardless of what these
+# strings say, and there is deliberately no third option for
+# the no-document case - that honest stop lives inside the
+# established flow as information (the last entry below).
+MODE_ENTRY = {
+    "question": "Where do the rules for this SOP come from?",
+    "established_label": (
+        "A specific manual, method, or document — equipment, "
+        "products, site processes, or any guideline you want "
+        "to supply."),
+    "genesis_label": (
+        "Public regulations alone — core quality-system SOPs "
+        "only (Document Control, Change Control, CAPA, "
+        "Training). The machine fetches the regulations for "
+        "you."),
+    "established_no_document_info": (
+        "Don't have the document yet? Get the manual, protocol, "
+        "or governing reference first. This machine drafts only "
+        "from sources you supply — it won't search for equipment "
+        "or product documents, and it won't invent technical "
+        "steps."),
+}
 
 # Appended to the Secrets drafting prompt for Genesis runs only
 # (precedent: the extraction prompt above lives in this file; the
@@ -1681,13 +1712,17 @@ def _genesis_section():
                            if item["topic_id"] else ""))
         st.text("\n".join(_lines))
     _OTHER = "Something else — describe it in one line"
+    # Topic selection is driven by the archetype's own checklist:
+    # every entry on it is a registered, buildable topic.
+    _proc_options = [p for p in reg.procedures_for(arch["id"]) if p["topic_id"]]
+    _labels = {p["name"]: p["topic_id"] for p in _proc_options}
     choice = st.selectbox("The one procedure to build now",
-                          [t["title"] for t in reg.TOPICS] + [_OTHER],
+                          list(_labels) + [_OTHER],
                           key="genesis_topic_choice")
     topic = None
     coverage_flags = []
     if choice != _OTHER:
-        topic = reg.topic_by_title(choice)
+        topic = reg.topic_by_id(_labels[choice])
     else:
         custom = st.text_input("Describe the procedure in one line",
                                key="genesis_custom_topic")
@@ -1702,18 +1737,27 @@ def _genesis_section():
                     f"topic “{matched['title']}”; the packet covers that "
                     f"topic's sources, which may not cover the request exactly.")
             else:
-                st.warning("No registered topic covers that yet — Genesis "
-                           "never invents sources. Pick the closest registered "
-                           "topic and the run proceeds with its packet, flagged "
-                           "as partial coverage.")
-                fallback = st.selectbox("Closest registered topic",
-                                        [t["title"] for t in reg.TOPICS],
-                                        key="genesis_fallback_topic")
-                topic = reg.topic_by_title(fallback)
-                coverage_flags.append(
-                    f"No registered topic matches “{custom}”. The run uses "
-                    f"the closest registered topic, “{topic['title']}” — "
-                    f"source coverage for the requested procedure is partial.")
+                # Honest stop (Nov 18, 2026): no match means Genesis
+                # cannot build it. No packet is built, no other topic
+                # is substituted, and no title is filled in from an
+                # unrelated topic - Flag Gaps covers gaps, not
+                # substitutions.
+                st.warning(
+                    "Genesis can't build that one yet. Genesis builds "
+                    "the standard procedures for your type of company "
+                    "from public regulation — it does not build "
+                    "specialized or company-specific procedures, and it "
+                    "never substitutes another procedure's sources for "
+                    "the one you asked for.")
+                st.write("The procedures Genesis can build for this "
+                         "archetype:")
+                for _p in _proc_options:
+                    st.write(f"- {_p['name']}")
+                st.write("If the rules for the procedure come from "
+                         "a specific manual, method, or document, "
+                         "choose **A specific manual, method, or "
+                         "document** at the top and draft it from the "
+                         "documents that govern it.")
     title = ""
     if topic:
         title = st.text_input("Document title", value=topic["sop_title"],
@@ -1825,6 +1869,7 @@ def _established_section():
                     st.success("Altered template saved for this session.")
                 except json.JSONDecodeError as e:
                     st.error(f"Not valid JSON: {e}")
+    st.info(MODE_ENTRY["established_no_document_info"])
     links = st.text_area("Source links (one per line, public only)",
                          "https://example.com")
     uploads = st.file_uploader("Or upload source files (stored in this session on the server, kept until you clear or reset the session)",
@@ -2292,14 +2337,21 @@ def main():
 
     # Mode (Nov 18, 2026): the drafting mode drafts from the user's
     # sources; Genesis mode is its own mode, for building one
-    # procedure from nothing. Same loop, same pipeline view, same
-    # downloads below - only section 1 differs.
-    st.radio("How do you want to start?",
+    # standard procedure from nothing. Same loop, same pipeline
+    # view, same downloads below - only section 1 differs.
+    # The entry question (copy in MODE_ENTRY above) sorts by the
+    # source of authority: a specific document the user supplies
+    # is the drafting mode; public regulations alone, for core
+    # quality-system SOPs, is Genesis. The no-document case is
+    # not a third option - it is stated as information inside
+    # the established flow, above the source fields.
+    st.radio(MODE_ENTRY["question"],
              ["established", "genesis"],
-             format_func=lambda m: ("Draft from my sources" if m == "established"
-                                    else "Genesis — build a procedure from nothing"),
+             format_func=lambda m: (
+                 MODE_ENTRY["established_label"]
+                 if m == "established" else MODE_ENTRY["genesis_label"]),
              key="app_mode", horizontal=True)
-    if st.session_state.get("app_mode") == "genesis":
+    if st.session_state.get("app_mode", "established") == "genesis":
         st.markdown(GENESIS_INTRO)
 
     if st.session_state.get("app_mode", "established") == "genesis":
