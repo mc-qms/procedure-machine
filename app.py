@@ -1,6 +1,14 @@
 """The Procedure Machine — Streamlit app.
 
-Public build, SOPs and Test Methods. The pipeline view shows which agent is
+Public build, SOPs and Test Methods. Two modes. The drafting mode
+(the original) drafts from the user's own sources. Genesis mode
+builds one procedure from nothing: the user picks an archetype
+from a standard list, and the machine assembles the packet from
+the public regulations and guidance registered for that procedure
+(genesis/registry.py), with a deterministic citation check
+(genesis/citation_check.py) at delivery - a regulatory citation
+that does not trace to the packet is removed, never flagged and
+kept. The pipeline view shows which agent is
 on, what step it is on, and what it took in and produced. It does
 NOT show model thoughts, live drafting text, or raw instructions.
 Polished instructions live in Streamlit Secrets, not in this repo.
@@ -336,6 +344,9 @@ def _clear_derived(session_dir):
     """
     derived = ("packet_check.json", "lookup.json",
                "source_packet.json", "source_packet.md",
+               "genesis_intake.json", "genesis_flags.md",
+               "citation_check.json", "citation_check_v1.json",
+               "citation_check_final.json",
                "draft_v1.md", "draft_v1.txt", "draft_v1_summary.json",
                "draft_v2.md", "draft_v2.txt",
                "draft_v3.md", "draft_v3.txt",
@@ -349,11 +360,12 @@ def _clear_derived(session_dir):
         path = os.path.join(session_dir, name)
         if os.path.exists(path):
             os.remove(path)
-    for name in os.listdir(session_dir):
-        if (name.endswith("_raw.json")
-                or name.startswith(_MODEL_RECORD_PREFIXES)
-                or name.endswith(("-user.txt", "-system.txt"))):
-            os.remove(os.path.join(session_dir, name))
+    if os.path.isdir(session_dir):
+        for name in os.listdir(session_dir):
+            if (name.endswith("_raw.json")
+                    or name.startswith(_MODEL_RECORD_PREFIXES)
+                    or name.endswith(("-user.txt", "-system.txt"))):
+                os.remove(os.path.join(session_dir, name))
     for name in list(st.session_state.get("stage_status", {})):
         st.session_state.stage_status[name] = "waiting"
 
@@ -915,6 +927,7 @@ def _apply_pause_answers(session_dir, current, answers, target=None):
     _od = _prompt_outdated("DRAFTING_SYSTEM_PROMPT", drafting_prompt)
     if _od:
         return False, 0, _od
+    drafting_prompt = _drafting_prompt(session_dir)
     author_text = "\n".join(f"- {m}\n  Answer: {a}" for m, a in answers.items())
     ok, new_draft = _revise(session_dir, packet_md, model, drafting_prompt,
                             current,
@@ -1059,6 +1072,9 @@ def _run_loop_chunk(session_dir):
     _od = _prompt_outdated("DRAFTING_SYSTEM_PROMPT", drafting_prompt)
     if _od:
         return _od
+    # Genesis sessions draft under the Secrets prompt plus the
+    # Genesis addendum (citation discipline, placeholder rule).
+    drafting_prompt = _drafting_prompt(session_dir)
     while True:
         step = st.session_state.get("loop_step", "idle")
         if step == "start":
@@ -1088,6 +1104,34 @@ def _run_loop_chunk(session_dir):
                 f.write(draft_v1)
             st.session_state.setdefault("loop_detail", {})["drafting-1"] = "Draft v1 ready (Discussion Draft) — written by the drafting model."
             st.session_state.stage_status["drafting-1"] = "done"
+            # Genesis source check (deterministic, on the first
+            # draft, before the audits): citations that do not
+            # trace to the packet are handed to the next drafting
+            # pass as repair items. The hard enforcement - removal -
+            # runs at delivery, in the finish step.
+            _genesis_check_note = ""
+            if _is_genesis_session(session_dir):
+                _cc_code, _cc_out = run(
+                    ["python3", os.path.join(BASE, "genesis", "citation_check.py"),
+                     "--session-dir", session_dir, "--draft", "draft_v1.md",
+                     "--out", "citation_check_v1.json"])
+                if _cc_code == 0:
+                    try:
+                        _cc = json.load(open(os.path.join(
+                            session_dir, "citation_check_v1.json")))
+                        _bad = _cc.get("unverified", [])
+                    except (OSError, json.JSONDecodeError):
+                        _bad = []
+                    if _bad:
+                        _genesis_check_note = (
+                            "GENESIS SOURCE CHECK (deterministic - run on the "
+                            "first draft): the following regulatory citations "
+                            "do not appear in the packet sources and will be "
+                            "removed by the source check at delivery if they "
+                            "remain. Remove each one, or replace it with a "
+                            "citation to a packet source:\n" +
+                            "\n".join(f"- {c.get('raw', '?')} ({c.get('basis', '')})"
+                                      for c in _bad) + "\n\n")
             # human-factors
             st.session_state.stage_status["human-factors"] = "running"
             hfe_prompt = _secret("HFE_SYSTEM_PROMPT")
@@ -1119,6 +1163,8 @@ def _run_loop_chunk(session_dir):
             _steps = _uncovered_steps_text(session_dir)
             if _steps:
                 _middle = _steps + "\n" + _middle
+            if _genesis_check_note:
+                _middle = _genesis_check_note + _middle
             ok, draft_v2 = _revise(session_dir, packet_md, model, drafting_prompt,
                                    "draft_v1.md", _middle, "v1",
                                    restore_fills=True)
@@ -1236,6 +1282,20 @@ def _run_loop_chunk(session_dir):
                             os.path.join(session_dir, "draft_final.md"))
                 shutil.copy(os.path.join(session_dir, current.replace(".md", ".txt")),
                             os.path.join(session_dir, "draft_final.txt"))
+            if _is_genesis_session(session_dir):
+                # Genesis delivery gate (right or cut): the
+                # deterministic citation check removes any citation
+                # that survived the loop unverified, appends the
+                # flag list to the final draft, and saves it
+                # alongside. A failed check fails the run - an
+                # unenforced Genesis draft is never delivered
+                # silently.
+                _fc_code, _fc_out = run(
+                    ["python3", os.path.join(BASE, "genesis", "citation_check.py"),
+                     "--session-dir", session_dir, "--enforce"])
+                if _fc_code != 0:
+                    return (f"The Genesis citation check failed at delivery: "
+                            f"{_fc_out.strip()[:300]}")
             st.session_state.stage_status["packet-builder"] = "done"
             st.session_state.loop_step = "done"
             return ""
@@ -1252,43 +1312,369 @@ def stage_box(number, label, role, desc, status, detail=""):
         st.caption(detail)
 
 
-def main():
-    st.title("The Procedure Machine")
-    # No public version caption (removed Nov 12, 2026): the app is
-    # pre-release, more like 0.15 than 15, and a "Version N" label
-    # overstates it. The live check is the Pipeline view instead —
-    # the stages it shows are the deployed build's fingerprint
-    # (v15: the two Human input stages).
-    st.write("A multi-agent system for drafting governed procedures — live, "
-             "public, and still being built. Intake, drafting, HFE review, "
-             "and cold-read audit for SOPs and Test Methods. Python owns what must be "
-             "true; the LLM owns what should feel human.")
-    secret_names = ["OPENROUTER_API_KEY", "MODEL_HFE", "MODEL_DRAFTING", "MODEL_COLD_READ",
-                    "MODEL_COMPACTION", "MODEL_LOOKUP", "MODEL_PACKET_CHECK", "MODEL_EXTRACTION",
-                    "HFE_SYSTEM_PROMPT", "DRAFTING_SYSTEM_PROMPT", "COLD_READ_SYSTEM_PROMPT"]
-    _seen = [n for n in secret_names if _secret(n)]
-    _missing = [n for n in secret_names if n not in _seen]
-    # The "Secrets this app can see" caption used to be shown here.
-    # It was a diagnostic from the Nov 11, 2026 secrets debugging
-    # (the "all 7 secrets missing" bug) and it served its purpose;
-    # it does not belong in the UI. Only the missing-key warning
-    # below is kept.
-    if "OPENROUTER_API_KEY" in _missing:
-        st.warning("No OpenRouter key visible to the app. Check the spelling in Settings → Secrets, and reboot the app (⋮ → Reboot app) — Streamlit Cloud only picks up new secrets on reboot.")
-    if "stage_status" not in st.session_state:
-        st.session_state.stage_status = {key: "waiting" for key, _, _, _ in STAGES}
-    # A session started before a version added stages lacks those
-    # keys; the pipeline view reads them all, so fill any gap.
-    for _key, _, _, _ in STAGES:
-        st.session_state.stage_status.setdefault(_key, "waiting")
-    if "session_id" not in st.session_state:
-        st.session_state.session_id = "demo-" + uuid.uuid4().hex[:8]
-    if "description_text" not in st.session_state:
-        st.session_state.description_text = (
-            "An SOP for cleaning the commercial espresso machine at closing time, so the first shot tomorrow tastes right. "
-            "It covers the countertop machine and grinder at the café. It does not cover plumbing, descaling, or the dishwasher. "
-            "It is for the staff member closing the shop.")
+# ---------------------------------------------------------------- Genesis mode
+# Genesis builds one procedure from nothing (Nov 18, 2026). The
+# drafting mode starts from the user's sources; Genesis starts one
+# step earlier, where there are no sources yet. The user picks an
+# archetype from the registry's standard list - selections only,
+# nothing about their company is typed in - picks the one
+# procedure they need, and the machine fetches the public
+# regulations and guidance registered for that topic, builds the
+# packet from them, and runs the same loop. Two rules are
+# Genesis's own: regulatory citations are verified against the
+# packet by a deterministic check (right or cut - see
+# genesis/citation_check.py), and internal references are
+# placeholders by design, flagged for the user's later edit
+# outside the app. A Genesis run ends as a Discussion Draft by
+# design, with the flag list appended and saved alongside it.
+try:
+    from genesis import registry as GENESIS_REGISTRY
+except Exception:  # a broken registry must not take the app down
+    GENESIS_REGISTRY = None
 
+GENESIS_INTRO = """**Genesis mode — a document system from nothing.**
+
+The drafting mode starts from your sources: guidance, manuals, an existing system to draft against. Genesis mode starts one step earlier, where there are no sources yet — a new company, a new site, a quality system that doesn't exist.
+
+You don't describe your company — you pick the archetype closest to it: monoclonal antibodies, diagnostics, cell therapy, combination products, and the like. The machine shows the procedure system the regulations require for that archetype — the list drawn from ICH Q10 and the CFRs — and you pick the one procedure you need. It fetches the public regulations and guidance for that procedure, drafts the SOP from them, checks every regulatory citation against what it actually fetched, and cold-read audits the result like any other run.
+
+What the regulations leave open is never filled in. Approval authorities, review periods, systems of record, and references to your own documents come back flagged — as placeholders in the draft and a decision list that travels with it, for your later edit in your own system.
+
+A Genesis run ends as a Discussion Draft by design: structure from the regulations; practice from you."""
+
+# Appended to the Secrets drafting prompt for Genesis runs only
+# (precedent: the extraction prompt above lives in this file; the
+# polished prompts in Secrets are mode-neutral). The citation
+# rules here are steering - the enforcement is the deterministic
+# check at delivery, not this text.
+GENESIS_DRAFTING_ADDENDUM = """
+
+GENESIS MODE - additional rules for this run. The packet is built from public regulations and guidance, not from the author's company documents, and there is no company system behind it yet.
+1. Regulatory citations: cite only instruments and sections that appear in the packet. Prefer citing the instrument (for example "ICH Q10") over a pinpoint section unless the packet shows that section. A citation the packet does not contain will be removed by a deterministic source check after drafting - do not rely on one.
+2. References to the organization's own documents (other SOPs, forms, document numbers) are placeholders by design: write them as bracketed placeholders, for example [SOP-QA-001, Change Control - placeholder: correct to your real document], never as if the number were known.
+3. Site-specific values the regulations leave open - approval authorities, review periods, retention times, named systems of record - are gap markers ([AUTHOR INPUT REQUIRED: ...]), not text. The Scope and Responsibilities normal-practice rule still applies, marked as normal practice.
+4. End the draft as a Discussion Draft; the flagged items are the author's later edit, in their own system."""
+
+
+def _is_genesis_session(session_dir):
+    return os.path.exists(os.path.join(session_dir, "genesis_intake.json"))
+
+
+def _drafting_prompt(session_dir):
+    """The drafting prompt for this session: the Secrets prompt,
+    plus the Genesis addendum when this is a Genesis session.
+    Returns None when the Secrets prompt is missing (callers gate
+    on the base prompt and its currency anchor before this)."""
+    base = _secret("DRAFTING_SYSTEM_PROMPT")
+    if not base:
+        return None
+    if _is_genesis_session(session_dir):
+        return base + GENESIS_DRAFTING_ADDENDUM
+    return base
+
+
+def _genesis_build(session_dir, arch, market, functions, topic, title,
+                   coverage_flags):
+    """Fetch the registry sources for one topic, read them, and
+    build the packet. Mirrors the established build's gates: a
+    source that cannot be fetched or read is recorded with its
+    status, never filled in from another; no usable source stops
+    the build. A Genesis build owns its source set - stored
+    sources from earlier work in the session are cleared first,
+    because the packet must be exactly the registered sources.
+    Returns an error string, or "" on success."""
+    reg = GENESIS_REGISTRY
+    os.makedirs(session_dir, exist_ok=True)
+    _clear_session_files(session_dir)
+    _clear_derived(session_dir)
+    st.session_state.pop("download_unlocked", None)
+    for _k in ("loop_step", "loop_current", "pause_shown",
+               "pause_questions", "loop_detail", "loop_result",
+               "pause_result", "packet_check", "extracted",
+               "purpose_scope", "template_pick", "save_result"):
+        st.session_state.pop(_k, None)
+    sources = []
+    for src in topic["sources"]:
+        sources.append({"name": src["name"], "url": src["url"],
+                        "filename": src["filename"],
+                        "instruments": src["instruments"],
+                        "fetch_status": "", "read_status": ""})
+    intake = {"mode": "genesis", "archetype_id": arch["id"],
+              "archetype_label": arch["label"],
+              "market_id": market["id"], "market_label": market["label"],
+              "functions": list(functions), "topic_id": topic["id"],
+              "topic_title": topic["title"], "title": title,
+              "coverage_flags": list(coverage_flags), "sources": sources}
+    with open(os.path.join(session_dir, "genesis_intake.json"), "w") as f:
+        json.dump(intake, f, indent=2)
+    st.session_state.stage_status["purpose-scope"] = "done"
+    st.session_state.stage_status["fetch-link"] = "running"
+    record_path = os.path.join(session_dir, "fetch_record.json")
+    with st.spinner("Fetching the public sources for this procedure…"):
+        for src in sources:
+            code, out = run(["python3", "skills/fetch-link/scripts/fetch.py",
+                             src["url"], "--session", st.session_state.session_id])
+            saved_base = None
+            if os.path.exists(record_path):
+                try:
+                    recs = json.load(open(record_path))
+                    mine = [r for r in recs if r.get("url") == src["url"]]
+                    if mine:
+                        saved_base = os.path.basename(mine[-1].get("saved_as", ""))
+                except (OSError, json.JSONDecodeError):
+                    saved_base = None
+            fetched_path = os.path.join(session_dir, saved_base) if saved_base else None
+            if code == 0 and fetched_path and os.path.exists(fetched_path):
+                # FDA media links all save as "download.pdf" - left
+                # alone, one source would overwrite the next. Rename
+                # each fetched file to the registry's filename at
+                # once, and correct the fetch record to match.
+                target = os.path.join(session_dir, src["filename"])
+                if fetched_path != target:
+                    os.replace(fetched_path, target)
+                    try:
+                        recs = json.load(open(record_path))
+                        for r in recs:
+                            if r.get("url") == src["url"]:
+                                r["saved_as"] = os.path.join(
+                                    "sessions", st.session_state.session_id,
+                                    src["filename"])
+                        with open(record_path, "w") as f:
+                            json.dump(recs, f, indent=2)
+                    except (OSError, json.JSONDecodeError):
+                        pass
+                src["fetch_status"] = "OK"
+            else:
+                src["fetch_status"] = "UNREADABLE - fetch failed"
+                intake["coverage_flags"].append(
+                    f"Source not fetched: {src['name']} ({src['url']}). "
+                    f"The packet is built without it.")
+    with open(os.path.join(session_dir, "genesis_intake.json"), "w") as f:
+        json.dump(intake, f, indent=2)
+    st.session_state.stage_status["fetch-link"] = "done"
+    st.session_state.stage_status["source-intake"] = "running"
+    present = [s["filename"] for s in sources
+               if os.path.exists(os.path.join(session_dir, s["filename"]))]
+    if not present:
+        st.session_state.stage_status["source-intake"] = "failed"
+        return ("None of the registered sources could be fetched, so there "
+                "is nothing to build from. The fetch record in this session "
+                "says why each one failed.")
+    code, out = run(["python3", os.path.join(BASE, "skills/source-intake/scripts/docsrc.py"),
+                     "intake"] + present, cwd=session_dir)
+    if code != 0:
+        st.session_state.stage_status["source-intake"] = "failed"
+        return f"Source intake failed: {out.strip()[:300]}"
+    _cache = {}
+    try:
+        _cache = json.load(open(os.path.join(session_dir, "docsrc_cache.json")))
+    except (OSError, json.JSONDecodeError):
+        _cache = {}
+    _files = _cache.get("files", {})
+    for s in sources:
+        rec = _files.get(s["filename"])
+        if isinstance(rec, dict):
+            s["read_status"] = rec.get("status", "?")
+        elif s["fetch_status"] == "OK":
+            s["read_status"] = "UNREADABLE"
+    with open(os.path.join(session_dir, "genesis_intake.json"), "w") as f:
+        json.dump(intake, f, indent=2)
+    if not any(s["read_status"] in ("OK", "PARTIAL") for s in sources):
+        st.session_state.stage_status["source-intake"] = "failed"
+        return ("The registered sources fetched but none could be read, so "
+                "there is nothing to build from.")
+    st.session_state.stage_status["source-intake"] = "done"
+    fmt = {"archetype": arch["label"].lower(), "market": market["scope_text"],
+           "functions": ", ".join(functions) if functions else "all functions"}
+    purpose_scope = {
+        "document_type": "SOP",
+        "purpose": topic["purpose"].format(**fmt),
+        "scope_in": topic["scope_in"].format(**fmt),
+        "scope_out": topic["scope_out"].format(**fmt),
+        "intended_user": topic["intended_user"],
+        "authority_route": "Governed",
+        "work_mode": "Draft/Format",
+        "template": "sop-default",
+    }
+    with open(os.path.join(session_dir, "purpose_scope.json"), "w") as f:
+        json.dump(purpose_scope, f, indent=2)
+    st.session_state.purpose_scope = purpose_scope
+    st.session_state.stage_status["packet-builder"] = "running"
+    with st.spinner("Building the packet from the registered sources…"):
+        code, out = run(["python3", "skills/packet-builder/scripts/packet.py",
+                         "build", "--session", st.session_state.session_id,
+                         "--template", "sop-default"])
+    _pkt_path = os.path.join(session_dir, "source_packet.json")
+    _pkt = {}
+    if os.path.exists(_pkt_path):
+        try:
+            _pkt = json.load(open(_pkt_path))
+        except (OSError, json.JSONDecodeError):
+            _pkt = {}
+    if code != 0 and not _pkt.get("over_cap"):
+        st.session_state.stage_status["packet-builder"] = "failed"
+        return f"Packet build failed: {out.strip()[:300]}"
+    if _pkt.get("over_cap"):
+        # Same trim path as the established build: relevance first,
+        # compaction if the kept sections are themselves too large.
+        key = _secret("OPENROUTER_API_KEY")
+        if not key:
+            st.session_state.stage_status["packet-builder"] = "failed"
+            return ("The packet is over the size cap and there is no "
+                    "OpenRouter key in Secrets, so the relevance step that "
+                    "would trim it cannot run.")
+        st.info("The packet is over the size cap, so the machine is trimming "
+                "it to the sections that matter for this procedure.")
+        with st.spinner("Trimming the packet — scoring each section against the procedure."):
+            code, out = run(["python3", "skills/packet-builder/scripts/relevance.py",
+                             "--session", st.session_state.session_id,
+                             "--mode", "env",
+                             "--model", _secret("MODEL_DRAFTING") or "openai/gpt-6-luna"],
+                            env={"OPENROUTER_API_KEY": key}, timeout=1200)
+        # relevance.py and compact.py both exit 2 for "ran fine,
+        # still over cap" and die (exit 1) on a real failure. The
+        # established build treats any non-zero relevance exit as a
+        # failure, which makes its compaction step unreachable when
+        # relevance leaves a packet over cap; Genesis handles exit 2
+        # as what it is - the handoff to compaction - because the
+        # registered sources are large guidance documents and the
+        # kept sections are routinely over cap on their own.
+        if code not in (0, 2):
+            st.session_state.stage_status["packet-builder"] = "failed"
+            return f"Relevance trimming failed: {out.strip()[:300]}"
+        try:
+            _pkt = json.load(open(_pkt_path))
+        except (OSError, json.JSONDecodeError):
+            _pkt = {}
+        if _pkt.get("over_cap"):
+            with st.spinner("Condensing the largest sections…"):
+                code, out = run(["python3", "skills/packet-builder/scripts/compact.py",
+                                 "--session", st.session_state.session_id,
+                                 "--mode", "env",
+                                 "--model", _secret("MODEL_COMPACTION") or "openai/gpt-6-luna"],
+                                env={"OPENROUTER_API_KEY": key}, timeout=1200)
+            if code not in (0, 2):
+                st.session_state.stage_status["packet-builder"] = "failed"
+                return f"Compaction failed: {out.strip()[:300]}"
+            try:
+                _pkt = json.load(open(_pkt_path))
+            except (OSError, json.JSONDecodeError):
+                _pkt = {}
+        if _pkt.get("over_cap"):
+            st.session_state.stage_status["packet-builder"] = "failed"
+            return (f"Still over the size cap after relevance and compaction "
+                    f"(~{_pkt.get('packet_tokens_estimate', '?')} tokens).")
+    st.session_state.stage_status["packet-builder"] = "needs-you"
+    return ""
+
+
+def _genesis_section():
+    """Genesis section 1: selections only, then the build. The
+    packet gate, the loop, the pipeline view, and the downloads
+    below are shared with the drafting mode."""
+    st.header("1. Genesis — start from the regulations")
+    reg = GENESIS_REGISTRY
+    if reg is None:
+        st.error("The Genesis registry could not be loaded, so Genesis mode "
+                 "is unavailable in this build. The drafting mode is unaffected.")
+        return
+    session_dir = os.path.join(SESSIONS, st.session_state.session_id)
+    st.write("Pick the archetype closest to your organization, and the one "
+             "procedure you need. Every answer is a selection from a standard "
+             "list — nothing about your company is typed in. Genesis builds "
+             "one procedure at a time; the checklist shows the whole system "
+             "for reference.")
+    arch = reg.archetype_by_label(st.selectbox(
+        "Organization archetype", [a["label"] for a in reg.ARCHETYPES],
+        key="genesis_archetype",
+        help="The kind of organization the document system is for. The archetype selects the regulation stack and the procedure checklist - it is a category, not a description of your company."))
+    market = reg.market_by_label(st.radio(
+        "Market", [m["label"] for m in reg.MARKETS], key="genesis_market",
+        horizontal=True))
+    functions = st.multiselect(
+        "Functions the procedure applies to", reg.FUNCTIONS,
+        default=["Quality Assurance", "Quality Control laboratory"],
+        key="genesis_functions")
+    st.caption(f"Regulation stack for this archetype: {arch['reg_stack']}")
+    with st.expander("The procedure system for this archetype (checklist — Genesis builds one at a time)"):
+        _lines = []
+        for item in reg.procedures_for(arch["id"]):
+            _lines.append("- " + item["name"] +
+                          (" — Genesis can build this one now"
+                           if item["topic_id"] else ""))
+        st.text("\n".join(_lines))
+    _OTHER = "Something else — describe it in one line"
+    choice = st.selectbox("The one procedure to build now",
+                          [t["title"] for t in reg.TOPICS] + [_OTHER],
+                          key="genesis_topic_choice")
+    topic = None
+    coverage_flags = []
+    if choice != _OTHER:
+        topic = reg.topic_by_title(choice)
+    else:
+        custom = st.text_input("Describe the procedure in one line",
+                               key="genesis_custom_topic")
+        if custom:
+            matched, _hits = reg.match_topic(custom)
+            if matched:
+                topic = matched
+                st.info(f"Closest registered topic: “{matched['title']}” — the "
+                        f"packet is built from that topic's registered sources.")
+                coverage_flags.append(
+                    f"The request “{custom}” was matched to the registered "
+                    f"topic “{matched['title']}”; the packet covers that "
+                    f"topic's sources, which may not cover the request exactly.")
+            else:
+                st.warning("No registered topic covers that yet — Genesis "
+                           "never invents sources. Pick the closest registered "
+                           "topic and the run proceeds with its packet, flagged "
+                           "as partial coverage.")
+                fallback = st.selectbox("Closest registered topic",
+                                        [t["title"] for t in reg.TOPICS],
+                                        key="genesis_fallback_topic")
+                topic = reg.topic_by_title(fallback)
+                coverage_flags.append(
+                    f"No registered topic matches “{custom}”. The run uses "
+                    f"the closest registered topic, “{topic['title']}” — "
+                    f"source coverage for the requested procedure is partial.")
+    title = ""
+    if topic:
+        title = st.text_input("Document title", value=topic["sop_title"],
+                              key=f"genesis_title_{topic['id']}")
+        st.write("Registered sources for this procedure (public documents only):")
+        for src in topic["sources"]:
+            st.write(f"- {src['name']}")
+    _build = st.button("Build the Genesis packet", type="primary",
+                       disabled=topic is None)
+    if _build and topic:
+        err = _genesis_build(session_dir, arch, market, functions, topic,
+                             title.strip() or topic["sop_title"],
+                             coverage_flags)
+        if err:
+            st.error(err)
+            st.stop()
+        st.success("Genesis packet built from the registered public sources. "
+                   "Check the read record below, then press “Start drafting” "
+                   "below — that is the human gate.")
+        st.rerun()
+    _intake_path = os.path.join(session_dir, "genesis_intake.json")
+    if os.path.exists(_intake_path):
+        try:
+            _intake = json.load(open(_intake_path))
+        except (OSError, json.JSONDecodeError):
+            _intake = None
+        if _intake:
+            st.write(f"Genesis run in this session: {_intake.get('title', '?')} "
+                     f"— {_intake.get('archetype_label', '?')}, "
+                     f"{_intake.get('market_label', '?')}.")
+            for _src in _intake.get("sources", []):
+                _status = _src.get("read_status") or _src.get("fetch_status") or "?"
+                st.write(f"- {_src.get('name', '?')} — read status: {_status}")
+            for _flag in _intake.get("coverage_flags", []):
+                st.warning(_flag)
+
+
+def _established_section():
     # --- Step 0: purpose + scope, with confirm gate
     # Intake starts with "describe what you want." The description
     # comes first; the kind of document and the template are read
@@ -1788,6 +2174,62 @@ def main():
                         st.session_state.lookup = _run_lookup(session_dir)
                     st.session_state.save_result = "Saved, and the packet rebuilt from the corrected values."
             st.rerun()
+
+
+def main():
+    st.title("The Procedure Machine")
+    # No public version caption (removed Nov 12, 2026): the app is
+    # pre-release, more like 0.15 than 15, and a "Version N" label
+    # overstates it. The live check is the Pipeline view instead —
+    # the stages it shows are the deployed build's fingerprint
+    # (v15: the two Human input stages).
+    st.write("A multi-agent system for drafting governed procedures — live, "
+             "public, and still being built. Intake, drafting, HFE review, "
+             "and cold-read audit for SOPs and Test Methods. Python owns what must be "
+             "true; the LLM owns what should feel human.")
+    secret_names = ["OPENROUTER_API_KEY", "MODEL_HFE", "MODEL_DRAFTING", "MODEL_COLD_READ",
+                    "MODEL_COMPACTION", "MODEL_LOOKUP", "MODEL_PACKET_CHECK", "MODEL_EXTRACTION",
+                    "HFE_SYSTEM_PROMPT", "DRAFTING_SYSTEM_PROMPT", "COLD_READ_SYSTEM_PROMPT"]
+    _seen = [n for n in secret_names if _secret(n)]
+    _missing = [n for n in secret_names if n not in _seen]
+    # The "Secrets this app can see" caption used to be shown here.
+    # It was a diagnostic from the Nov 11, 2026 secrets debugging
+    # (the "all 7 secrets missing" bug) and it served its purpose;
+    # it does not belong in the UI. Only the missing-key warning
+    # below is kept.
+    if "OPENROUTER_API_KEY" in _missing:
+        st.warning("No OpenRouter key visible to the app. Check the spelling in Settings → Secrets, and reboot the app (⋮ → Reboot app) — Streamlit Cloud only picks up new secrets on reboot.")
+    if "stage_status" not in st.session_state:
+        st.session_state.stage_status = {key: "waiting" for key, _, _, _ in STAGES}
+    # A session started before a version added stages lacks those
+    # keys; the pipeline view reads them all, so fill any gap.
+    for _key, _, _, _ in STAGES:
+        st.session_state.stage_status.setdefault(_key, "waiting")
+    if "session_id" not in st.session_state:
+        st.session_state.session_id = "demo-" + uuid.uuid4().hex[:8]
+    if "description_text" not in st.session_state:
+        st.session_state.description_text = (
+            "An SOP for cleaning the commercial espresso machine at closing time, so the first shot tomorrow tastes right. "
+            "It covers the countertop machine and grinder at the café. It does not cover plumbing, descaling, or the dishwasher. "
+            "It is for the staff member closing the shop.")
+
+    # Mode (Nov 18, 2026): the drafting mode drafts from the user's
+    # sources; Genesis mode is its own mode, for building one
+    # procedure from nothing. Same loop, same pipeline view, same
+    # downloads below - only section 1 differs.
+    st.radio("How do you want to start?",
+             ["established", "genesis"],
+             format_func=lambda m: ("Draft from my sources" if m == "established"
+                                    else "Genesis — build a procedure from nothing"),
+             key="app_mode", horizontal=True)
+    if st.session_state.get("app_mode") == "genesis":
+        st.markdown(GENESIS_INTRO)
+
+    if st.session_state.get("app_mode", "established") == "genesis":
+        _genesis_section()
+    else:
+        _established_section()
+
     # The drafting gate lives here in section 1, right where the
     # packet was built — not at the bottom of the Pipeline view
     # (moved Nov 11, 2026: the gate was too far from the work).
@@ -2153,6 +2595,11 @@ def main():
                     with open(_packet_md, "rb") as f:
                         st.download_button("Download source_packet.md", f.read(),
                                            file_name="source_packet.md")
+                _flags_path = os.path.join(session_dir, "genesis_flags.md")
+                if os.path.exists(_flags_path):
+                    with open(_flags_path, "rb") as f:
+                        st.download_button("Download genesis_flags.md (Genesis flag list)", f.read(),
+                                           file_name="genesis_flags.md")
 
     # --- Session cleanup (moved to the bottom of the page,
     # Nov 14, 2026): clearing and resetting rendered in section 1,

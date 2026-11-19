@@ -4,6 +4,8 @@ Multi-agent procedure orchestration, from guidance to a solid first draft of an 
 
 Give it a purpose, a scope, and your source documents — guidance, instrument manuals, reference procedures — and it drafts an SOP or a test method through a full loop: drafting, human-factors review, drafting, cold-read audit, drafting, cold read, final draft. Python owns what must be true; the LLM owns what should feel human.
 
+**Genesis mode** is the second way in, for building a document system from nothing — see below.
+
 ## How it works
 
 1. **Purpose & scope** — you say what document you want, what it covers, and what template to use. SOPs and test methods are in scope; policy, work instructions, and protocols are flagged out of scope. Or pick the built-in example — a pH test method from US EPA Method 150.1, source included — and watch a full run without bringing a document.
@@ -15,6 +17,16 @@ Give it a purpose, a scope, and your source documents — guidance, instrument m
 7. **Human in the loop** — gaps that need an author answer pause for the human. "I don't know" is a valid answer; that item stays a flagged gap and the run continues. A run may end as a Discussion Draft with markers visible. A formal clean copy needs zero markers.
 The loop is: drafting, HFE, drafting, cold read, drafting, cold read, final draft. A run takes minutes and costs cents — the Python does the bulk of the work for free, and each model call is one narrow judgment on a small prompt.
 
+## Genesis mode — a document system from nothing
+
+The drafting mode above starts from your sources: guidance, manuals, an existing system to draft against. Genesis mode starts one step earlier, where there are no sources yet — a new company, a new site, a quality system that doesn't exist.
+
+You don't describe your company — you pick the archetype closest to it: monoclonal antibodies, diagnostics, cell therapy, combination products, and the like. The machine shows the procedure system the regulations require for that archetype — the list drawn from ICH Q10 and the CFRs — and you pick the one procedure you need. It fetches the public regulations and guidance registered for that procedure, builds the packet from them, and runs the same loop: drafting, human-factors review, cold-read audit.
+
+Two rules are Genesis's own. Regulatory citations are checked against the packet by a deterministic source check: a citation that does not trace to a fetched source is removed, never flagged and kept. And references to your own documents — document numbers, form numbers, other SOPs — are placeholders by design, flagged in the draft for your later edit.
+
+What the regulations leave open is never filled in. Approval authorities, review periods, systems of record — those come back as flagged gaps and a decision list that travels with the draft. A Genesis run ends as a Discussion Draft by design: structure from the regulations; practice from you.
+
 ## The design principle
 
 > Python owns what must be true; the LLM owns what should feel human.
@@ -23,6 +35,7 @@ The loop is: drafting, HFE, drafting, cold read, drafting, cold read, final draf
 - Agents draft and format. They do not decide root cause, disposition, or acceptance criteria.
 - Zero inference: leave a placeholder and flag what is missing; never invent a value, a step, or a criterion.
 - Facts trace to a user-provided source. If a reviewer could not explain the output to an auditor without the agent, the scope is too wide.
+- In Genesis mode, facts trace to the public regulation and guidance text the machine fetched — and the fetch record, with each source's read status, travels with the run.
 
 Skills are the testable core; agent instructions stay thin (role, boundaries, which skill when). `app.py` is the orchestrator; the pipeline stages live under `skills/` and `agents/`.
 
@@ -51,6 +64,9 @@ The pipeline also runs headlessly from the scripts — that is how it was built 
 ```
 app.py                  Streamlit front end (pipeline view, human gates, download)
 examples/               the built-in example source (US EPA Method 150.1 text, public domain) the example picker loads
+genesis/
+  registry.py           the Genesis registry: archetypes, markets, functions, the procedure checklist, and the topic-to-public-source map (data, no model)
+  citation_check.py     deterministic citation verification and enforcement for Genesis drafts (Python only, no LLM)
 requirements.txt        streamlit + pypdf
 .streamlit/
   secrets.toml.example  template for Streamlit Secrets (key + prompts, no real values)
