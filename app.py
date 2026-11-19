@@ -168,7 +168,7 @@ def _ensure_section_content(draft_text, session_dir):
 # -system.txt / _raw.json, so these slipped through and were read as
 # sources on the next build in the same session — and listed as
 # "stored sources". They are never sources.
-_MODEL_RECORD_PREFIXES = ("relevance-", "compact-", "packet-check-", "lookup-")
+_MODEL_RECORD_PREFIXES = ("relevance-", "compact-", "packet-check-", "lookup-", "triage-")
 
 # The loop, in order, as the user sees it. Drafting and cold read
 # repeat — that is the loop, not a display bug (Nov 12, 2026:
@@ -362,7 +362,11 @@ def _clear_derived(session_dir):
                "draft_final.md", "draft_final.txt",
                "hfe_findings.json",
                "cold_read_findings_1.json", "cold_read_findings_2.json",
-               "cold_read_filtered_1.json", "cold_read_filtered_2.json")
+               "cold_read_filtered_1.json", "cold_read_filtered_2.json",
+               "triage_candidates_1.json", "triage_candidates_2.json",
+               "triage_1.json", "triage_2.json",
+               "triage_answers_in_1.json", "triage_answers_in_2.json",
+               "triage_answers_1.json", "triage_answers_2.json")
     for name in derived:
         path = os.path.join(session_dir, name)
         if os.path.exists(path):
@@ -978,6 +982,167 @@ def _apply_pause_answers(session_dir, current, answers, target=None):
     return True, len(_find_markers(new_draft)), ""
 
 
+def _marker_section(draft_text, marker):
+    """The section heading a marker sits under (the nearest
+    preceding '## ' heading), recorded as triage context.
+    '' when the marker is not found or no heading precedes it."""
+    idx = draft_text.find(marker)
+    if idx < 0:
+        return ""
+    heading = ""
+    for line in draft_text[:idx].splitlines():
+        if line.startswith("## "):
+            heading = line.strip()
+    return heading
+
+
+def _run_question_triage(session_dir, current, candidates, round_no, model):
+    """Classify the pause candidates against the packet
+    (agents/audit-agent/scripts/triage.py, task 'questions').
+    Returns the triage dict, or None when triage did not run
+    (no key, script failure) - the pause then proceeds with
+    every candidate asked, exactly as it did before triage
+    existed. A question is never dropped by a failed triage."""
+    key = _secret("OPENROUTER_API_KEY")
+    if not key:
+        return None
+    draft_text = _draft_text(session_dir, current)
+    cand = [{"marker": m, "body": _marker_body(m),
+             "section": _marker_section(draft_text, m)}
+            for m in candidates]
+    with open(os.path.join(session_dir,
+                           f"triage_candidates_{round_no}.json"), "w") as f:
+        json.dump(cand, f, indent=2)
+    code, out = run(["python3", "agents/audit-agent/scripts/triage.py",
+                     "questions", "--session-dir", session_dir,
+                     "--round", str(round_no), "--mode", "env",
+                     "--model", model],
+                    env={"OPENROUTER_API_KEY": key})
+    if code != 0:
+        return None
+    try:
+        with open(os.path.join(session_dir, f"triage_{round_no}.json")) as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def _ground_from_packet(session_dir, current, items, packet_md, model,
+                        drafting_prompt):
+    """Ground packet-answerable gaps in the current draft: one
+    drafting revision whose only material is the packet passages
+    triage quoted and verified. Written back to `current` -
+    grounding is the machine's correction work, not the human's
+    answers, so it does not consume the post-pause version.
+    Returns (ok, remaining): remaining lists the item markers
+    still present afterwards. A marker that survives was not
+    grounded, whatever the revision claimed, and the caller
+    asks it at the pause instead of letting it vanish; the next
+    cold read then audits the grounded text cold, like any
+    other draft text."""
+    lines = []
+    for it in items:
+        lines.append(
+            f"- Gap: {it['marker']}\n  Packet passage that answers it "
+            f"({it.get('packet_source') or 'source packet'}): "
+            f"\"{it['packet_quote']}\"")
+    middle = ("PACKET-GROUNDED ANSWERS - the source packet already answers "
+              "the flagged gaps below; each quoted passage was verified "
+              "against the packet. Replace each listed gap marker with "
+              "text grounded in its quoted passage, citing the packet "
+              "source the passage comes from. Use only what the passage "
+              "supports; do not invent beyond it, and do not touch any "
+              "other gap marker.\n\n" + "\n".join(lines))
+    ok, new_draft = _revise(session_dir, packet_md, model, drafting_prompt,
+                            current, middle, "triage", restore_fills=True)
+    if not ok:
+        return False, [it["marker"] for it in items]
+    with open(os.path.join(session_dir, current), "w") as f:
+        f.write(new_draft)
+    with open(os.path.join(session_dir, current.replace(".md", ".txt")),
+              "w") as f:
+        f.write(new_draft)
+    remaining = [it["marker"] for it in items
+                 if it["marker"] in _find_markers(new_draft)]
+    return True, remaining
+
+
+def _apply_question_triage(session_dir, current, triage, packet_md, model,
+                           drafting_prompt):
+    """Apply triage's non-question outcomes to the current draft,
+    before the pause renders: references become placeholders in
+    place, packet-answerable gaps are grounded by revision.
+    Returns (failed_grounding_markers, note)."""
+    note_parts = []
+    placeholders = triage.get("placeholders", [])
+    if placeholders:
+        text = _draft_text(session_dir, current)
+        changed = 0
+        for ph in placeholders:
+            if ph["marker"] in text:
+                text = text.replace(
+                    ph["marker"],
+                    f"[INTERNAL SOP PLACEHOLDER: {ph['reference_name']}]")
+                changed += 1
+        if changed:
+            with open(os.path.join(session_dir, current), "w") as f:
+                f.write(text)
+            with open(os.path.join(session_dir,
+                                   current.replace(".md", ".txt")), "w") as f:
+                f.write(text)
+            note_parts.append(f"{changed} became reference placeholder(s)")
+    failed = []
+    grounded = triage.get("grounded", [])
+    if grounded:
+        ok, remaining = _ground_from_packet(
+            session_dir, current, grounded, packet_md, model,
+            drafting_prompt)
+        if ok:
+            failed = remaining
+            done = len(grounded) - len(remaining)
+            if done:
+                note_parts.append(f"{done} grounded from the packet")
+            if remaining:
+                note_parts.append(
+                    f"{len(remaining)} could not be grounded and "
+                    f"are asked below")
+        else:
+            failed = [g["marker"] for g in grounded]
+            note_parts.append(
+                "packet grounding failed - those questions are asked below")
+    return failed, "; ".join(note_parts)
+
+
+def _run_answer_triage(session_dir, answers, round_no, model):
+    """Classify the human's pause answers (content / sources /
+    reference) with triage.py, task 'answers'. `answers` maps
+    marker -> answer text. Returns {marker: entry}, or None when
+    classification did not run - every answer is then applied
+    as content, exactly as before triage existed."""
+    key = _secret("OPENROUTER_API_KEY")
+    if not key:
+        return None
+    rows = [{"marker": m, "body": _marker_body(m), "answer": a}
+            for m, a in answers.items()]
+    with open(os.path.join(session_dir,
+                           f"triage_answers_in_{round_no}.json"), "w") as f:
+        json.dump(rows, f, indent=2)
+    code, out = run(["python3", "agents/audit-agent/scripts/triage.py",
+                     "answers", "--session-dir", session_dir,
+                     "--round", str(round_no), "--mode", "env",
+                     "--model", model],
+                    env={"OPENROUTER_API_KEY": key})
+    if code != 0:
+        return None
+    try:
+        with open(os.path.join(session_dir,
+                               f"triage_answers_{round_no}.json")) as f:
+            entries = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return None
+    return {e["marker"]: e for e in entries}
+
+
 def _uncovered_steps_text(session_dir):
     """Uncovered workflow steps from the packet check (v24), as text
     for the drafter. A partial fit means the source has the technical
@@ -1322,19 +1487,78 @@ def _run_loop_chunk(session_dir):
             # is nothing to apply either — mark it done so it does
             # not sit at "waiting" forever.
             _after_key = "drafting-4" if step == "pause1" else "drafting-6"
-            qs = _pause_questions(session_dir, st.session_state.get("loop_current", "draft_v2.md"))
+            round_no = 1 if step == "pause1" else 2
+            current = st.session_state.get("loop_current", "draft_v2.md")
+            qs = _pause_questions(session_dir, current)
+            # Question triage (both modes): before the human is
+            # asked, every candidate is checked against the packet
+            # the draft was built from. What the packet answers is
+            # grounded, names of the organization's own documents
+            # and systems become placeholders, duplicates merge,
+            # and the pause is capped at the most load-bearing
+            # few - the overflow stays flagged in the draft and
+            # is not asked again this run. Triage is recorded in
+            # triage_N.json in the session folder. When triage
+            # does not run, every candidate is asked, as before.
+            triage_note = ""
+            st.session_state.pause_triage = {}
+            deferred_bodies = set(st.session_state.get("triage_deferred", []))
+            if deferred_bodies:
+                qs = [q for q in qs
+                      if _marker_body(q) not in deferred_bodies]
+            if qs:
+                triage = _run_question_triage(session_dir, current, qs,
+                                              round_no, model_cold)
+                if triage is not None:
+                    failed, triage_note = _apply_question_triage(
+                        session_dir, current, triage, packet_md, model,
+                        drafting_prompt)
+                    asked = [q["marker"] for q in triage.get("questions", [])]
+                    for m in failed:
+                        if m not in asked:
+                            asked.append(m)
+                    members = [mm for q in triage.get("questions", [])
+                               for mm in q.get("members", [])]
+                    if members:
+                        st.session_state.pause_shown = list(
+                            set(st.session_state.get("pause_shown", []))
+                            | set(members))
+                    deferred_bodies |= {
+                        _marker_body(d["marker"])
+                        for d in triage.get("deferred", [])}
+                    st.session_state.triage_deferred = list(deferred_bodies)
+                    st.session_state.pause_triage = {
+                        "round": round_no,
+                        "displays": {q["marker"]: q.get("display", "")
+                                     for q in triage.get("questions", [])},
+                        "contexts": {q["marker"]: q.get("context", "")
+                                     for q in triage.get("questions", [])},
+                        "groups": {q["marker"]: q.get("members", [])
+                                   for q in triage.get("questions", [])
+                                   if len(q.get("members", [])) > 1},
+                        "grounded": len(triage.get("grounded", [])),
+                        "placeholders": len(triage.get("placeholders", [])),
+                        "merged": len(triage.get("merged", [])),
+                        "deferred": len(triage.get("deferred", [])),
+                    }
+                    qs = asked
             if not qs:
                 # Nothing to ask: the drafting agent resolved
                 # everything the cold read found. Account for it
                 # and move on — no pause.
                 st.session_state.stage_status[stage_name] = "done"
-                st.session_state.setdefault("loop_detail", {})[stage_name] = "Nothing to ask — the drafting agent resolved everything."
+                st.session_state.setdefault("loop_detail", {})[stage_name] = (
+                    f"Nothing to ask — triage resolved everything before the pause ({triage_note})."
+                    if triage_note else
+                    "Nothing to ask — the drafting agent resolved everything.")
                 st.session_state.stage_status[_after_key] = "done"
                 st.session_state.setdefault("loop_detail", {})[_after_key] = "No answers to apply — nothing to ask."
                 st.session_state.loop_step = "cold2" if step == "pause1" else "finish"
                 continue
             st.session_state.stage_status[stage_name] = "needs-you"
-            st.session_state.setdefault("loop_detail", {})[stage_name] = f"{len(qs)} question(s) for the human."
+            st.session_state.setdefault("loop_detail", {})[stage_name] = (
+                f"{len(qs)} question(s) for the human."
+                + (f" Triage: {triage_note}." if triage_note else ""))
             st.session_state.pause_questions = qs
             st.session_state.pause_shown = list(set(st.session_state.get("pause_shown", [])) | set(qs))
             return ""  # STOP — the pause UI renders
@@ -1523,7 +1747,8 @@ def _genesis_build(session_dir, arch, market, functions, topic, title,
     _clear_derived(session_dir)
     st.session_state.pop("download_unlocked", None)
     for _k in ("loop_step", "loop_current", "pause_shown",
-               "pause_questions", "loop_detail", "loop_result",
+               "pause_questions", "pause_triage", "triage_deferred",
+               "loop_detail", "loop_result",
                "pause_result", "packet_check", "extracted",
                "purpose_scope", "template_pick", "save_result"):
         st.session_state.pop(_k, None)
@@ -1980,7 +2205,8 @@ def _established_section():
         # And resets the loop state machine: a new build starts
         # the loop from the beginning, with no pause left over.
         for _k in ("loop_step", "loop_current", "pause_shown",
-                   "pause_questions", "loop_detail", "loop_result",
+                   "pause_questions", "pause_triage", "triage_deferred",
+                   "loop_detail", "loop_result",
                    "pause_result"):
             st.session_state.pop(_k, None)
         with st.spinner("Reading your description…"):
@@ -2272,7 +2498,8 @@ def _established_section():
             # presented against the new one.
             _clear_derived(session_dir)
             for _k in ("loop_step", "loop_current", "pause_shown",
-                       "pause_questions", "loop_detail", "loop_result",
+                       "pause_questions", "pause_triage", "triage_deferred",
+                       "loop_detail", "loop_result",
                        "download_unlocked"):
                 st.session_state.pop(_k, None)
             code, out = run(["python3", "skills/packet-builder/scripts/packet.py",
@@ -2521,6 +2748,8 @@ def main():
         st.session_state.loop_current = "draft_v2.md"
         st.session_state.pause_shown = []
         st.session_state.pause_questions = []
+        st.session_state.pause_triage = {}
+        st.session_state.triage_deferred = []
         st.session_state.loop_detail = {}
         with st.spinner("Running the loop: drafting, HFE, drafting, cold read, drafting, cold read, final draft…"):
             err = _run_loop_chunk(session_dir)
@@ -2541,9 +2770,30 @@ def main():
         _stage_name = "human-input-1" if _round_no == 1 else "human-input-2"
         st.header(f"Paused after cold read {_round_no}")
         st.write("The drafting agent could not resolve these — only a human can. "
-                 "Provide the information, or if a question does not seem applicable, "
-                 "state why. Leave the rest blank; a blank answer stays flagged. "
+                 "Before asking, every question was checked against the packet: what the "
+                 "packet already answers has been grounded from it, and names of your own "
+                 "documents and systems have become placeholders, so what remains is what "
+                 "only you can supply. Provide the information, or answer in the way that "
+                 "fits: if the sources already answer a question, say so and the loop will "
+                 "find it there; if it belongs to another of your procedures, name that "
+                 "procedure and it becomes a reference to it; if a question does not apply, "
+                 "say why. Leave the rest blank; a blank answer stays flagged. "
                  "“I don't know” is a valid answer.")
+        _triage = st.session_state.get("pause_triage") or {}
+        if _triage.get("round") != _round_no:
+            _triage = {}
+        if _triage:
+            _bits = []
+            if _triage.get("grounded"):
+                _bits.append(f"{_triage['grounded']} answered from the packet before asking")
+            if _triage.get("placeholders"):
+                _bits.append(f"{_triage['placeholders']} turned into reference placeholders")
+            if _triage.get("merged"):
+                _bits.append(f"{_triage['merged']} merged into the questions below")
+            if _triage.get("deferred"):
+                _bits.append(f"{_triage['deferred']} less load-bearing question(s) left flagged in the draft instead of asked here")
+            if _bits:
+                st.write("Triage before this pause: " + "; ".join(_bits) + ".")
         if st.session_state.get("example_sel") not in (None, "Write my own"):
             st.info("Running the example? This stop is the point — the machine halts "
                     "rather than invent an answer. Leave everything blank if you like; "
@@ -2551,10 +2801,17 @@ def main():
         if st.session_state.get("pause_result"):
             st.success(st.session_state.pop("pause_result"))
         _answers = {}
+        _displays = _triage.get("displays") or {}
+        _contexts = _triage.get("contexts") or {}
         for _n, _marker in enumerate(st.session_state.get("pause_questions", []), start=1):
-            _short = _marker if len(_marker) <= 140 else _marker[:137] + "…"
+            _label = _marker
+            if _displays.get(_marker):
+                _label = f"[AUTHOR INPUT REQUIRED: {_displays[_marker]}]"
+            _short = _label if len(_label) <= 140 else _label[:137] + "…"
             _key = "pause-answer-" + hashlib.md5((_marker + f"|{_round_no}").encode("utf-8")).hexdigest()
             _answers[_marker] = st.text_area(f"{_n}. {_short}", key=_key, height=68)
+            if _contexts.get(_marker):
+                st.caption(f"Why this is asked: {_contexts[_marker]}")
         _advance = False
         _given = {}
         # The drafting step after this pause (drafting-4 after
@@ -2564,26 +2821,132 @@ def main():
         _after_key = "drafting-4" if _round_no == 1 else "drafting-6"
         if st.button("Apply my answers and continue"):
             _given = {m: a.strip() for m, a in _answers.items() if a.strip()}
+            # A merged question stands for several markers; its
+            # answer applies to every marker it merged.
+            _groups = _triage.get("groups") or {}
+            if _given and _groups:
+                _expanded = {}
+                for _m, _a in _given.items():
+                    for _member in _groups.get(_m, [_m]):
+                        _expanded[_member] = _a
+                _given = _expanded
             if _given:
                 st.session_state.stage_status[_after_key] = "running"
                 _target = "draft_v4.md" if _round_no == 1 else "draft_final.md"
-                with st.spinner("Applying your answers…"):
-                    _ok, _remaining, _err = _apply_pause_answers(
-                        os.path.join(SESSIONS, st.session_state.session_id),
-                        st.session_state.get("loop_current", "draft_v2.md"), _given,
-                        target=_target)
-                if not _ok:
-                    st.session_state.stage_status[_after_key] = "failed"
-                    st.error(f"Could not apply the answers: {_err}")
-                    st.stop()
-                st.session_state.loop_current = _target
-                st.session_state.stage_status[_after_key] = "done"
-                st.session_state.setdefault("loop_detail", {})[_after_key] = (
-                    f"Answers applied. {_remaining} gap(s) still flagged in this draft."
-                    if _remaining else "All flagged gaps answered.")
-                st.session_state.pause_result = (
-                    f"Answers applied. {_remaining} gap(s) still flagged in this draft."
-                    if _remaining else "All flagged gaps answered.")
+                _session_dir = os.path.join(SESSIONS, st.session_state.session_id)
+                _current = st.session_state.get("loop_current", "draft_v2.md")
+                _notes = []
+                _content = _given
+                _changed_in_place = False
+                # Answer triage: an answer that says the sources
+                # already answer the question, or that names
+                # another procedure, is honored as what it is -
+                # never applied as authored content. A "sources"
+                # claim the re-check cannot verify is re-flagged
+                # (un-shown, so it is asked again at the next
+                # pause) and reported, never silently dropped.
+                _classified = _run_answer_triage(
+                    _session_dir, _given, _round_no,
+                    _secret("MODEL_COLD_READ") or _secret("MODEL_DRAFTING")
+                    or "openai/gpt-6-luna")
+                if _classified is not None:
+                    _content = {}
+                    _discharges = []
+                    _references = {}
+                    for _m, _a in _given.items():
+                        _e = _classified.get(_m) or {}
+                        if _e.get("kind") == "sources" and _e.get("verified"):
+                            _discharges.append({
+                                "marker": _m,
+                                "packet_quote": _e.get("packet_quote", ""),
+                                "packet_source": _e.get("packet_source", "")})
+                        elif _e.get("kind") == "sources":
+                            _notes.append(
+                                "One answer said the sources answer it, but the "
+                                "re-check could not find it in the packet - it "
+                                "stays flagged and will be asked again: "
+                                f"“{_marker_body(_m)[:80]}”")
+                            st.session_state.pause_shown = [
+                                s for s in st.session_state.get("pause_shown", [])
+                                if _marker_body(s) != _marker_body(_m)]
+                        elif _e.get("kind") == "reference":
+                            _references[_m] = _e.get("reference_name", "")
+                        else:
+                            _content[_m] = _a
+                    if _references:
+                        _text = _draft_text(_session_dir, _current)
+                        _nref = 0
+                        for _m, _name in _references.items():
+                            if _name and _m in _text:
+                                _text = _text.replace(
+                                    _m, f"[INTERNAL SOP PLACEHOLDER: {_name}]")
+                                _nref += 1
+                        if _nref:
+                            with open(os.path.join(_session_dir, _current), "w") as f:
+                                f.write(_text)
+                            with open(os.path.join(_session_dir, _current.replace(".md", ".txt")), "w") as f:
+                                f.write(_text)
+                            _changed_in_place = True
+                            _notes.append(f"{_nref} answer(s) became reference placeholders.")
+                    if _discharges:
+                        _ok_g, _rem_g = _ground_from_packet(
+                            _session_dir, _current, _discharges,
+                            _packet_text(_session_dir),
+                            _secret("MODEL_DRAFTING") or "openai/gpt-6-luna",
+                            _drafting_prompt(_session_dir))
+                        _grounded_n = 0
+                        for _it in _discharges:
+                            if _ok_g and _it["marker"] not in _rem_g:
+                                _grounded_n += 1
+                            else:
+                                _notes.append(
+                                    "One answer said the sources answer it, but "
+                                    "grounding from the packet did not take - it "
+                                    "stays flagged and will be asked again: "
+                                    f"“{_marker_body(_it['marker'])[:80]}”")
+                                st.session_state.pause_shown = [
+                                    s for s in st.session_state.get("pause_shown", [])
+                                    if _marker_body(s) != _marker_body(_it["marker"])]
+                        if _grounded_n:
+                            _changed_in_place = True
+                            _notes.append(f"{_grounded_n} answer(s) grounded from the packet.")
+                if _content:
+                    with st.spinner("Applying your answers…"):
+                        _ok, _remaining, _err = _apply_pause_answers(
+                            _session_dir, _current, _content, target=_target)
+                    if not _ok:
+                        st.session_state.stage_status[_after_key] = "failed"
+                        st.error(f"Could not apply the answers: {_err}")
+                        st.stop()
+                    st.session_state.loop_current = _target
+                    st.session_state.stage_status[_after_key] = "done"
+                    st.session_state.setdefault("loop_detail", {})[_after_key] = (
+                        f"Answers applied. {_remaining} gap(s) still flagged in this draft."
+                        if _remaining else "All flagged gaps answered.")
+                    st.session_state.pause_result = (
+                        f"Answers applied. {_remaining} gap(s) still flagged in this draft."
+                        if _remaining else "All flagged gaps answered.")
+                elif _changed_in_place:
+                    import shutil
+                    shutil.copy(os.path.join(_session_dir, _current),
+                                os.path.join(_session_dir, _target))
+                    shutil.copy(os.path.join(_session_dir, _current.replace(".md", ".txt")),
+                                os.path.join(_session_dir, _target.replace(".md", ".txt")))
+                    st.session_state.loop_current = _target
+                    _remaining = len(_find_markers(_draft_text(_session_dir, _target)))
+                    st.session_state.stage_status[_after_key] = "done"
+                    st.session_state.setdefault("loop_detail", {})[_after_key] = (
+                        f"Answers applied. {_remaining} gap(s) still flagged in this draft."
+                        if _remaining else "All flagged gaps answered.")
+                    st.session_state.pause_result = (
+                        f"Answers applied. {_remaining} gap(s) still flagged in this draft."
+                        if _remaining else "All flagged gaps answered.")
+                else:
+                    st.session_state.stage_status[_after_key] = "done"
+                    st.session_state.setdefault("loop_detail", {})[_after_key] = "No answers to apply."
+                if _notes:
+                    _prev = st.session_state.get("pause_result", "")
+                    st.session_state.pause_result = ((_prev + " ") if _prev else "") + " ".join(_notes)
             else:
                 st.session_state.stage_status[_after_key] = "done"
                 st.session_state.setdefault("loop_detail", {})[_after_key] = "No answers to apply."
@@ -2822,7 +3185,8 @@ def main():
                     _deleted = _clear_session_files(_session_dir)
                     _clear_derived(_session_dir)
                     for _k in ("loop_step", "loop_current", "pause_shown",
-                               "pause_questions", "loop_detail", "loop_result",
+                               "pause_questions", "pause_triage", "triage_deferred",
+                               "loop_detail", "loop_result",
                                "pause_result", "download_unlocked", "packet_check",
                                "extracted", "purpose_scope", "template_pick",
                                "save_result", "ps-purpose", "ps-scope-in",
@@ -2862,7 +3226,8 @@ def main():
                     _clear_derived(_session_dir)
                     _n_reset = _reset_session_files(_session_dir)
                     for _k in ("loop_step", "loop_current", "pause_shown",
-                               "pause_questions", "loop_detail", "loop_result",
+                               "pause_questions", "pause_triage", "triage_deferred",
+                               "loop_detail", "loop_result",
                                "pause_result", "download_unlocked", "packet_check",
                                "extracted", "purpose_scope", "template_pick",
                                "save_result", "ps-purpose", "ps-scope-in",
