@@ -1432,6 +1432,29 @@ def _run_loop_chunk(session_dir):
             st.session_state.stage_status[_cold_key] = "running"
             user = (f"DRAFT (cold read input only - draft + packet, no HFE, no drafting history):\n"
                     f"{_draft_text(session_dir, current)}\n\nSOURCE PACKET:\n{packet_md}")
+            # Deterministic step lint (code): candidate multi-action
+            # steps and regulatory role terms in the current draft,
+            # handed to the cold read as candidates to judge - never
+            # as findings. A lint failure never blocks the audit;
+            # the read proceeds without the candidates.
+            try:
+                _lint_path = os.path.join(session_dir,
+                                          f"step_lint_{round_no}.json")
+                _lcode, _lout = run(["python3",
+                                     "agents/audit-agent/scripts/step_lint.py",
+                                     "--draft", os.path.join(session_dir, current),
+                                     "--out", _lint_path])
+                if _lcode == 0 and os.path.exists(_lint_path):
+                    with open(_lint_path) as f:
+                        _cands = json.load(f).get("candidates", [])
+                    if _cands:
+                        user += ("\n\nDETERMINISTIC STEP LINT - candidate steps "
+                                 "flagged by code for your judgment (not "
+                                 "findings; report only what survives your "
+                                 "reconciliation):\n"
+                                 + json.dumps(_cands, indent=2))
+            except Exception:
+                pass
             ok, content, usage = _model_call(session_dir, "cold-read", cold_prompt, user, model_cold)
             if not ok:
                 st.session_state.stage_status[_cold_key] = "failed"
