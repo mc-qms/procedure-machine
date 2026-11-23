@@ -2607,6 +2607,14 @@ def main():
              "public, and still being built. Intake, drafting, HFE review, "
              "and cold-read audit for SOPs and Test Methods. Python owns what must be "
              "true; the LLM owns what should feel human.")
+    st.markdown(
+        "**A completed example library:** "
+        "[Fictitious Labs EDMS](https://fictitious-labs-edms.streamlit.app/) "
+        "— controlled documents for a fictional biologics company, most "
+        "drafted by this pipeline from public regulations, then checked "
+        "by an independent audit pass. A framework to iterate from, not "
+        "drop-in documents."
+    )
     secret_names = ["OPENROUTER_API_KEY", "MODEL_HFE", "MODEL_DRAFTING", "MODEL_COLD_READ",
                     "MODEL_COMPACTION", "MODEL_LOOKUP", "MODEL_PACKET_CHECK", "MODEL_EXTRACTION",
                     "HFE_SYSTEM_PROMPT", "DRAFTING_SYSTEM_PROMPT", "COLD_READ_SYSTEM_PROMPT"]
