@@ -2826,11 +2826,18 @@ def main():
             st.error(err)
             st.stop()
         if st.session_state.get("loop_step") == "done":
-            _flagged = st.session_state.get("hitl_flagged", [])
-            if _flagged:
+            # Count the gaps in the final draft itself, not the
+            # questions flagged at the pauses: the last revision can
+            # add markers after the final pause, and the finish line
+            # must match the draft below (and the count in section 3).
+            try:
+                _n_final = len(_find_markers(_draft_text(session_dir, "draft_final.md")))
+            except OSError:
+                _n_final = len(st.session_state.get("hitl_flagged", []))
+            if _n_final:
                 st.session_state.loop_result = (
                     f"Loop finished. Final draft below — a Discussion Draft, with "
-                    f"{len(_flagged)} flagged gap(s) left as placeholders, not invented.")
+                    f"{_n_final} flagged gap(s) left as placeholders, not invented.")
             else:
                 st.session_state.loop_result = "Loop finished. Final draft below — a Discussion Draft, with any flagged gaps visible, not invented."
         st.rerun()
@@ -3041,11 +3048,18 @@ def main():
                 st.error(err)
                 st.stop()
             if st.session_state.get("loop_step") == "done":
-                _flagged = st.session_state.get("hitl_flagged", [])
-                if _flagged:
+                # Count the gaps in the final draft itself, not the
+                # questions flagged at the pauses: the last revision can
+                # add markers after the final pause, and the finish line
+                # must match the draft below (and the count in section 3).
+                try:
+                    _n_final = len(_find_markers(_draft_text(_session_dir, "draft_final.md")))
+                except OSError:
+                    _n_final = len(st.session_state.get("hitl_flagged", []))
+                if _n_final:
                     st.session_state.loop_result = (
                         f"Loop finished. Final draft below — a Discussion Draft, with "
-                        f"{len(_flagged)} flagged gap(s) left as placeholders, not invented.")
+                        f"{_n_final} flagged gap(s) left as placeholders, not invented.")
                 else:
                     st.session_state.loop_result = "Loop finished. Final draft below — a Discussion Draft, with any flagged gaps visible, not invented."
             st.rerun()
