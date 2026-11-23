@@ -55,11 +55,17 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 import uuid
 from urllib.parse import urlparse
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 SESSIONS = os.path.join(BASE, "sessions")
+SHARED_CACHE = os.path.join(BASE, "shared_cache")
+# Bump when the prompts or models change: every shelved shared
+# copy was made by the old machine and stops being served.
+SHARED_CACHE_VERSION = 1
+SHARED_TTL_SECONDS = 7 * 24 * 60 * 60
 
 def _strip_prompt_echoes(draft_text):
     """Remove prompt-instruction echoes from a revised draft
@@ -1731,6 +1737,112 @@ def _is_genesis_session(session_dir):
     return os.path.exists(os.path.join(session_dir, "genesis_intake.json"))
 
 
+def _shared_key(arch_id, market_id, functions, topic_id, title):
+    """The shared-copy key: one shelved copy per exact set of
+    Genesis selections. Everything in it is picked from a standard
+    list - archetype, market, functions, topic, and the document
+    title the registry proposes - which is what makes a finished
+    run shareable at all: no visitor's own material is in it."""
+    payload = {"v": SHARED_CACHE_VERSION, "archetype": arch_id,
+               "market": market_id, "functions": sorted(functions),
+               "topic": topic_id, "title": title}
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()[:24]
+
+
+def _shared_entry(key):
+    """(folder, meta) for a fresh shelved copy, or None. An entry
+    past its 7 days is deleted on sight: regulations and prompts
+    move, and a shared copy is a byproduct with a shelf life, not
+    a published library anyone is standing behind."""
+    if not key:
+        return None
+    entry = os.path.join(SHARED_CACHE, key)
+    try:
+        with open(os.path.join(entry, "shared_meta.json")) as f:
+            meta = json.load(f)
+        age = time.time() - float(meta["generated_at"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    if age > SHARED_TTL_SECONDS:
+        shutil.rmtree(entry, ignore_errors=True)
+        return None
+    if not os.path.exists(os.path.join(entry, "draft_final.md")):
+        return None
+    return entry, meta
+
+
+def _store_shared_copy(session_dir):
+    """Shelve a finished run as the shared copy for its selections.
+
+    Called at the finish line; decides for itself whether this run
+    may be shelved. Only clean, fully pick-list Genesis runs: the
+    key was fixed when the packet was built from list selections,
+    the run went without human input (an answered run holds one
+    visitor's own answers - never shared), and every registered
+    source was read (a degraded run does not become the copy the
+    next visitor gets)."""
+    key = st.session_state.get("shared_key")
+    if not key or st.session_state.get("hitl_prompts"):
+        return
+    if not _is_genesis_session(session_dir):
+        return
+    try:
+        with open(os.path.join(session_dir, "genesis_intake.json")) as f:
+            intake = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return
+    for src in intake.get("sources", []):
+        if src.get("fetch_status") != "OK" \
+                or src.get("read_status") not in ("OK", "PARTIAL"):
+            return
+    if not os.path.exists(os.path.join(session_dir, "draft_final.md")):
+        return
+    entry = os.path.join(SHARED_CACHE, key)
+    tmp = entry + ".tmp"
+    shutil.rmtree(tmp, ignore_errors=True)
+    try:
+        shutil.copytree(session_dir, tmp)
+        meta = {"generated_at": time.time(),
+                "title": intake.get("title", ""),
+                "topic_id": intake.get("topic_id", ""),
+                "loop_detail": st.session_state.get("loop_detail", {})}
+        with open(os.path.join(tmp, "shared_meta.json"), "w") as f:
+            json.dump(meta, f, indent=2)
+        shutil.rmtree(entry, ignore_errors=True)
+        os.replace(tmp, entry)
+    except OSError:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _serve_shared_copy(session_dir, entry, meta):
+    """Present a shelved copy as this session's finished run. The
+    files move into the visitor's own session folder, so the
+    pipeline view, the draft viewer, and the downloads all work
+    exactly as they do at the end of a live run - as far as the
+    app can tell, this session finished one. The pipeline details
+    are the original run's own, carried in the meta."""
+    _reset_session_files(session_dir)
+    os.makedirs(session_dir, exist_ok=True)
+    for name in os.listdir(entry):
+        if name == "shared_meta.json":
+            continue
+        src = os.path.join(entry, name)
+        if os.path.isfile(src):
+            shutil.copy2(src, os.path.join(session_dir, name))
+    st.session_state.stage_status = {k: "done" for k, _, _, _ in STAGES}
+    st.session_state.loop_detail = dict(meta.get("loop_detail", {}))
+    st.session_state.loop_step = "done"
+    st.session_state.loop_current = "draft_final.md"
+    st.session_state.hitl_flagged = []
+    _n = len(_find_markers(_draft_text(session_dir, "draft_final.md")))
+    _when = time.strftime("%d %B %Y", time.localtime(meta["generated_at"]))
+    st.session_state.loop_result = (
+        f"Shared copy - this document was generated on {_when} for these "
+        f"same selections, so nothing was re-run. A Discussion Draft, with "
+        f"{_n} flagged gap(s) left as placeholders, not invented.")
+
+
 def _drafting_prompt(session_dir):
     """The drafting prompt for this session: the Secrets prompt,
     plus the Genesis addendum when this is a Genesis session.
@@ -2087,8 +2199,26 @@ def _genesis_section():
     _build = st.button("Build the packet", type="primary",
                        disabled=topic is None)
     if _build and topic:
+        _title = title.strip() or topic["sop_title"]
+        # Shared copies (Nov 23, 2026): with human input off, a run
+        # from pick-list selections is the same document whoever
+        # asks for it, so a finished one is shelved and served to
+        # the next identical request instead of being regenerated.
+        # The key is fixed here, at the build, from the selections
+        # alone; a typed "Something else" request never gets one,
+        # and neither does a run with human input on - an answered
+        # run is one visitor's own and is never shelved or served.
+        st.session_state.shared_key = None
+        if choice != _OTHER and not st.session_state.get("hitl_toggle", False):
+            _key = _shared_key(arch["id"], market["id"], functions,
+                               topic["id"], _title)
+            _hit = _shared_entry(_key)
+            if _hit:
+                _serve_shared_copy(session_dir, _hit[0], _hit[1])
+                st.rerun()
+            st.session_state.shared_key = _key
         err = _genesis_build(session_dir, arch, market, functions, topic,
-                             title.strip() or topic["sop_title"],
+                             _title,
                              coverage_flags)
         if err:
             st.error(err)
@@ -2840,6 +2970,7 @@ def main():
                     f"{_n_final} flagged gap(s) left as placeholders, not invented.")
             else:
                 st.session_state.loop_result = "Loop finished. Final draft below — a Discussion Draft, with any flagged gaps visible, not invented."
+            _store_shared_copy(session_dir)
         st.rerun()
     if st.session_state.get("loop_result"):
         st.success(st.session_state.pop("loop_result"))
@@ -3062,6 +3193,7 @@ def main():
                         f"{_n_final} flagged gap(s) left as placeholders, not invented.")
                 else:
                     st.session_state.loop_result = "Loop finished. Final draft below — a Discussion Draft, with any flagged gaps visible, not invented."
+                _store_shared_copy(_session_dir)
             st.rerun()
 
     # --- Pipeline view
