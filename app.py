@@ -23,8 +23,10 @@ Pipeline, in order:
   -> cold read again -> dedup.py -> drafting fixes -> human-input pause
   -> download
 
-Human gates are buttons in the pipeline view. The run pauses at
-each gate; it does not auto-advance past them. Flagged gaps are
+Human gates are buttons in the pipeline view. With Human in the
+loop on, the run pauses at each gate; it does not auto-advance
+past them. With it off (the default), the run never pauses:
+questions stay in the draft as flagged placeholders. Flagged gaps are
 OK at run conclusion: the final draft is a Discussion Draft,
 markers included, downloadable as it stands.
 
@@ -1580,6 +1582,27 @@ def _run_loop_chunk(session_dir):
                 st.session_state.setdefault("loop_detail", {})[_after_key] = "No answers to apply — nothing to ask."
                 st.session_state.loop_step = "cold2" if step == "pause1" else "finish"
                 continue
+            if not st.session_state.get("hitl_prompts", False):
+                # Human in the loop is off for this run: do not
+                # stop. The questions stay in the draft as flagged
+                # placeholders - the markers are already there, and
+                # nothing removes them but an answered pause. They
+                # are recorded for the finish line and marked shown,
+                # so the next pause does not collect them again.
+                st.session_state.pause_shown = list(
+                    set(st.session_state.get("pause_shown", [])) | set(qs))
+                st.session_state.hitl_flagged = list(
+                    st.session_state.get("hitl_flagged", [])) + list(qs)
+                st.session_state.stage_status[stage_name] = "done"
+                st.session_state.setdefault("loop_detail", {})[stage_name] = (
+                    f"Human in the loop is off - {len(qs)} question(s) left "
+                    "flagged in the draft as placeholders."
+                    + (f" Triage: {triage_note}." if triage_note else ""))
+                st.session_state.stage_status[_after_key] = "done"
+                st.session_state.setdefault("loop_detail", {})[_after_key] = (
+                    "No answers to apply - human in the loop is off.")
+                st.session_state.loop_step = "cold2" if step == "pause1" else "finish"
+                continue
             st.session_state.stage_status[stage_name] = "needs-you"
             st.session_state.setdefault("loop_detail", {})[stage_name] = (
                 f"{len(qs)} question(s) for the human."
@@ -2660,6 +2683,16 @@ def main():
     if st.session_state.get("app_mode", "established") == "genesis":
         st.markdown(GENESIS_INTRO)
 
+    # Human in the loop (Nov 23, 2026): the pauses after each cold
+    # read are optional. Off (the default) the run never stops -
+    # questions the drafting agent could not resolve stay in the
+    # draft as flagged placeholders and are counted at the end of
+    # the run. The choice is snapshotted when the loop starts, so
+    # flipping this mid-run changes nothing for the run in
+    # progress.
+    st.toggle("Human in the loop", value=False, key="hitl_toggle")
+    st.caption("This will prompt you for input after each cold read.")
+
     if st.session_state.get("app_mode", "established") == "genesis":
         _genesis_section()
     else:
@@ -2779,6 +2812,8 @@ def main():
         st.session_state.stage_status["packet-builder"] = "done"
         st.session_state.loop_step = "start"
         st.session_state.loop_current = "draft_v2.md"
+        st.session_state.hitl_prompts = bool(st.session_state.get("hitl_toggle", False))
+        st.session_state.hitl_flagged = []
         st.session_state.pause_shown = []
         st.session_state.pause_questions = []
         st.session_state.pause_triage = {}
@@ -2791,7 +2826,13 @@ def main():
             st.error(err)
             st.stop()
         if st.session_state.get("loop_step") == "done":
-            st.session_state.loop_result = "Loop finished. Final draft below — a Discussion Draft, with any flagged gaps visible, not invented."
+            _flagged = st.session_state.get("hitl_flagged", [])
+            if _flagged:
+                st.session_state.loop_result = (
+                    f"Loop finished. Final draft below — a Discussion Draft, with "
+                    f"{len(_flagged)} flagged gap(s) left as placeholders, not invented.")
+            else:
+                st.session_state.loop_result = "Loop finished. Final draft below — a Discussion Draft, with any flagged gaps visible, not invented."
         st.rerun()
     if st.session_state.get("loop_result"):
         st.success(st.session_state.pop("loop_result"))
@@ -3000,7 +3041,13 @@ def main():
                 st.error(err)
                 st.stop()
             if st.session_state.get("loop_step") == "done":
-                st.session_state.loop_result = "Loop finished. Final draft below — a Discussion Draft, with any flagged gaps visible, not invented."
+                _flagged = st.session_state.get("hitl_flagged", [])
+                if _flagged:
+                    st.session_state.loop_result = (
+                        f"Loop finished. Final draft below — a Discussion Draft, with "
+                        f"{len(_flagged)} flagged gap(s) left as placeholders, not invented.")
+                else:
+                    st.session_state.loop_result = "Loop finished. Final draft below — a Discussion Draft, with any flagged gaps visible, not invented."
             st.rerun()
 
     # --- Pipeline view

@@ -15,7 +15,7 @@ The app opens with one question: **Where do the rules for this SOP come from?**
 4. **Drafting** — the drafting model writes draft v1 from the packet. What it cannot ground in the packet becomes a gap marker, never invented text, and the deterministic fills (Records, References, Responsibilities) come from the packet itself.
 5. **Human factors** — a structured review of whether a qualified user can actually follow the draft in order. Findings go back to drafting.
 6. **Cold-read audit** — a fresh audit of the draft and packet only, no drafting history, no HFE reasoning. Findings are ordered by load-bearing weight, not severity, with no grade and no score. A deterministic filter drops findings that only restate a gap already flagged in the draft.
-7. **Human in the loop** — gaps that need an author answer pause for the human. "I don't know" is a valid answer; that item stays a flagged gap and the run continues. A run may end as a Discussion Draft with markers visible. A formal clean copy needs zero markers.
+7. **Human in the loop** — gaps that need an author answer pause for the human, when the Human in the loop toggle is on. It is off by default: the run never pauses, and gaps stay in the draft as flagged placeholders, counted at the end of the run. "I don't know" is a valid answer; that item stays a flagged gap and the run continues. A run may end as a Discussion Draft with markers visible. A formal clean copy needs zero markers.
 The loop is: drafting, HFE, drafting, cold read, drafting, cold read, final draft. A run takes minutes and costs cents — the Python does the bulk of the work for free, and each model call is one narrow judgment on a small prompt.
 
 ## From public regulations — a document system from nothing
